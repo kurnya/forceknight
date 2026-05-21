@@ -1,0 +1,38 @@
+[
+  {
+    "name": "Black Tassel",
+    "category": "weapon",
+    "stats": ["HP%"],
+    "description": "Polearm dengan substat HP%."
+  },
+  {
+    "name": "Key of Khaj-Nisut",
+    "category": "weapon",
+    "stats": ["HP%"],
+    "description": "Sword dengan substat HP%."
+  },
+  {
+    "name": "Vourukasha's Glow",
+    "category": "artifact",
+    "stats": ["HP%", "Elemental Skill DMG"],
+    "description": "Artifact set yang mendukung HP%."
+  },
+  {
+    "name": "Tenacity of the Millelith",
+    "category": "artifact",
+    "stats": ["HP%", "Shield Strength"],
+    "description": "Artifact set yang memberi bonus HP%."
+  },
+  {
+    "name": "Marechaussee Hunter",
+    "category": "artifact",
+    "stats": ["Normal Attack DMG", "Crit Rate"],
+    "description": "Artifact set untuk peningkatan Crit Rate."
+  },
+  {
+    "name": "Staff of Homa",
+    "category": "weapon",
+    "stats": ["Crit DMG", "HP%"],
+    "description": "Polearm dengan Crit DMG dan scaling HP."
+  }
+]
