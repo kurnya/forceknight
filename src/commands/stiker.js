@@ -84,19 +84,6 @@ module.exports = {
       return;
     }
 
-    if (mediaSource.type === "video" && mediaSource.seconds > MAX_ANIMATED_STICKER_SECONDS) {
-      await sock.sendMessage(
-        message.key.remoteJid,
-        {
-          text: `Video terlalu panjang. Maksimal ${MAX_ANIMATED_STICKER_SECONDS} detik untuk stiker bergerak.`
-        },
-        {
-          quoted: message
-        }
-      );
-      return;
-    }
-
     let mediaBuffer;
     let stickerBuffer;
 
