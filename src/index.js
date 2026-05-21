@@ -78,6 +78,9 @@ async function startBot() {
       auth: state,
       logger: P({ level: "silent" }),
       browser: ["Fuuka Bot", "Chrome", "1.0.0"],
+      keepAliveIntervalMs: settings.whatsappKeepAliveMs,
+      connectTimeoutMs: settings.whatsappConnectTimeoutMs,
+      defaultQueryTimeoutMs: settings.whatsappDefaultQueryTimeoutMs,
       markOnlineOnConnect: false,
       printQRInTerminal: false
     });

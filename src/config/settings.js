@@ -35,6 +35,12 @@ function parseEnabledCommands(value) {
     .filter(Boolean);
 }
 
+function parsePositiveNumber(value, fallback) {
+  const number = Number(value);
+
+  return Number.isFinite(number) && number > 0 ? number : fallback;
+}
+
 const settings = {
   botName: process.env.BOT_NAME || "Fuuka",
   botNumber: process.env.BOT_NUMBER || "",
@@ -42,7 +48,10 @@ const settings = {
   prefix: process.env.PREFIX || "!",
   allowedGroups: process.env.ALLOWED_GROUPS || "",
   enabledCommands: parseEnabledCommands(process.env.ENABLED_COMMANDS),
-  groupCommandRules: parseGroupCommandRules(process.env.GROUP_COMMAND_RULES)
+  groupCommandRules: parseGroupCommandRules(process.env.GROUP_COMMAND_RULES),
+  whatsappKeepAliveMs: parsePositiveNumber(process.env.WHATSAPP_KEEP_ALIVE_MS, 10000),
+  whatsappConnectTimeoutMs: parsePositiveNumber(process.env.WHATSAPP_CONNECT_TIMEOUT_MS, 60000),
+  whatsappDefaultQueryTimeoutMs: parsePositiveNumber(process.env.WHATSAPP_DEFAULT_QUERY_TIMEOUT_MS, 60000)
 };
 
 module.exports = settings;
