@@ -36,12 +36,12 @@ async function convertVideoToSticker(videoBuffer) {
       ffmpeg(inputPath)
         .outputOptions([
           "-t 6",
-          "-vf scale=512:512:force_original_aspect_ratio=decrease,fps=15,pad=512:512:-1:-1:color=0x00000000",
+          "-vf scale=512:512:force_original_aspect_ratio=decrease,fps=10,pad=512:512:-1:-1:color=0x00000000",
           "-loop 0",
           "-an",
           "-vsync 0",
-          "-quality 75",
-          "-compression_level 6"
+          "-quality 65",
+          "-compression_level 4"
         ])
         .format("webp")
         .save(outputPath)
