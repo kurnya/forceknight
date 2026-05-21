@@ -17,8 +17,8 @@ ffmpeg.setFfmpegPath(ffmpegPath);
 async function convertImageToSticker(imageBuffer) {
   return sharp(imageBuffer)
     .resize(512, 512, {
-      fit: "contain",
-      background: { r: 0, g: 0, b: 0, alpha: 0 }
+      fit: "cover",
+      position: "center"
     })
     .webp({ quality: 80 })
     .toBuffer();
@@ -36,7 +36,7 @@ async function convertVideoToSticker(videoBuffer) {
       ffmpeg(inputPath)
         .outputOptions([
           "-t 6",
-          "-vf scale=512:512:force_original_aspect_ratio=decrease,fps=10,pad=512:512:-1:-1:color=0x00000000",
+          "-vf scale=512:512:force_original_aspect_ratio=increase,crop=512:512,fps=10",
           "-loop 0",
           "-an",
           "-vsync 0",
