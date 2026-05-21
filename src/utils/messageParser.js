@@ -92,8 +92,19 @@ function getMediaSourceMessage(message) {
   if (directMessage?.imageMessage) {
     return {
       source: "direct",
+      type: "image",
       message,
       isViewOnce: isDirectViewOnce || Boolean(directMessage.imageMessage.viewOnce)
+    };
+  }
+
+  if (directMessage?.videoMessage) {
+    return {
+      source: "direct",
+      type: "video",
+      message,
+      isViewOnce: isDirectViewOnce || Boolean(directMessage.videoMessage.viewOnce),
+      seconds: directMessage.videoMessage.seconds || 0
     };
   }
 
@@ -104,8 +115,19 @@ function getMediaSourceMessage(message) {
   if (quotedMessage?.message?.imageMessage) {
     return {
       source: "quoted",
+      type: "image",
       message: quotedMessage,
       isViewOnce: isQuotedViewOnce || Boolean(quotedMessage.message.imageMessage.viewOnce)
+    };
+  }
+
+  if (quotedMessage?.message?.videoMessage) {
+    return {
+      source: "quoted",
+      type: "video",
+      message: quotedMessage,
+      isViewOnce: isQuotedViewOnce || Boolean(quotedMessage.message.videoMessage.viewOnce),
+      seconds: quotedMessage.message.videoMessage.seconds || 0
     };
   }
 
