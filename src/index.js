@@ -93,6 +93,7 @@ async function startBot() {
       if (qr) {
         console.log("[QR] QR code berhasil dibuat. Silakan scan dari WhatsApp.");
         qrcode.generate(qr, { small: true });
+        console.log(`[QR LINK] Buka link ini kalau QR di console terlalu besar: https://quickchart.io/qr?size=260&text=${encodeURIComponent(qr)}`);
       }
 
       if (connection === "open") {
