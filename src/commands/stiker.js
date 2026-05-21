@@ -27,6 +27,19 @@ module.exports = {
       return;
     }
 
+    if (mediaSource.isViewOnce) {
+      await sock.sendMessage(
+        message.key.remoteJid,
+        {
+          text: "Maaf, gambar sekali lihat tidak bisa dibuat stiker demi menjaga privasi member."
+        },
+        {
+          quoted: message
+        }
+      );
+      return;
+    }
+
     let imageBuffer;
     let stickerBuffer;
 

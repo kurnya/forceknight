@@ -11,6 +11,14 @@ function unwrapMessageContent(messageContent) {
   );
 }
 
+function isViewOnceMessageContent(messageContent) {
+  return Boolean(
+    messageContent?.viewOnceMessage ||
+    messageContent?.viewOnceMessageV2 ||
+    messageContent?.viewOnceMessageV2Extension
+  );
+}
+
 function extractMessageText(message) {
   const messageContent = unwrapMessageContent(message?.message);
 
@@ -78,21 +86,26 @@ function extractTextFromMessageContent(messageContent) {
 }
 
 function getMediaSourceMessage(message) {
+  const isDirectViewOnce = isViewOnceMessageContent(message?.message);
   const directMessage = unwrapMessageContent(message?.message);
 
   if (directMessage?.imageMessage) {
     return {
       source: "direct",
-      message
+      message,
+      isViewOnce: isDirectViewOnce || Boolean(directMessage.imageMessage.viewOnce)
     };
   }
 
+  const contextInfo = getQuotedMessageContext(message);
+  const isQuotedViewOnce = isViewOnceMessageContent(contextInfo?.quotedMessage);
   const quotedMessage = createQuotedMessage(message);
 
   if (quotedMessage?.message?.imageMessage) {
     return {
       source: "quoted",
-      message: quotedMessage
+      message: quotedMessage,
+      isViewOnce: isQuotedViewOnce || Boolean(quotedMessage.message.imageMessage.viewOnce)
     };
   }
 
