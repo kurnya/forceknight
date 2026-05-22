@@ -11,8 +11,24 @@ const sharp = require("sharp");
 const { getMediaSourceMessage } = require("../utils/messageParser");
 
 const MAX_ANIMATED_STICKER_SECONDS = 6;
+const viewOncePrivacyReplies = [
+  "E-ehh, Fuuka nggak boleh bikin stiker dari media sekali lihat yaa... itu rahasia member, harus dijaga baik-baik~ (｡•́︿•̀｡)",
+  "Uwaa, ini media sekali lihat lho~ Fuuka tutup mata dulu yaa, privasi member nomor satu! (つ﹏⊂)",
+  "Maaf yaa onii-chan, Fuuka nggak bisa ubah media sekali lihat jadi stiker. Nanti rahasianya kebuka dong~ (´；ω；`)",
+  "Fuuka tahu itu lucu, tapi kalau sekali lihat berarti harus dihormati yaa~ jadi stiker-nya Fuuka batalin dulu (｡•̀ᴗ-)✧",
+  "Ehehe... Fuuka nggak akan nakal ambil media sekali lihat. Privasi member harus Fuuka lindungi~ (｀・ω・´)",
+  "Stop dulu yaa~ media sekali lihat bukan bahan stiker. Fuuka jagain aman-aman biar nggak tersebar (〃ω〃)",
+  "Aduh, Fuuka pengen bantu, tapi ini sekali lihat. Jadi nggak bisa dibuat stiker demi kenyamanan member yaa~ (´ . .̫ . `)",
+  "No no no~ kalau media sekali lihat, Fuuka harus jadi anak baik dan nggak bikin stiker dari situ (≧◡≦)",
+  "Fuuka simpan sopan santun dulu yaa: media sekali lihat tetap sekali lihat, bukan untuk dijadikan stiker~ (๑˃ᴗ˂)ﻭ",
+  "Rahasia member terdeteksi! Fuuka nggak akan proses media sekali lihat jadi stiker. Aman bersama Fuuka~ (o^▽^o)"
+];
 
 ffmpeg.setFfmpegPath(ffmpegPath);
+
+function pickRandomReply(replies) {
+  return replies[Math.floor(Math.random() * replies.length)];
+}
 
 async function convertImageToSticker(imageBuffer) {
   return sharp(imageBuffer)
@@ -60,6 +76,7 @@ async function convertVideoToSticker(videoBuffer) {
 
 module.exports = {
   name: "stiker",
+  aliases: ["sticker"],
   description: "Mengubah gambar atau video pendek menjadi stiker WhatsApp.",
   execute: async ({ sock, message }) => {
     const mediaSource = getMediaSourceMessage(message);
@@ -75,7 +92,7 @@ module.exports = {
       await sock.sendMessage(
         message.key.remoteJid,
         {
-          text: "Maaf, media sekali lihat tidak bisa dibuat stiker demi menjaga privasi member."
+          text: pickRandomReply(viewOncePrivacyReplies)
         },
         {
           quoted: message

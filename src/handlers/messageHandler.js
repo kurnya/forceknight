@@ -6,12 +6,14 @@ const fuuka = require("../commands/fuuka");
 const help = require("../commands/help");
 const intro = require("../commands/intro");
 
-const commands = new Map([
-  [stiker.name, stiker],
-  [fuuka.name, fuuka],
-  [help.name, help],
-  [intro.name, intro]
-]);
+const registeredCommands = [stiker, fuuka, help, intro];
+const commands = new Map(registeredCommands.map((command) => [command.name, command]));
+
+for (const command of registeredCommands) {
+  for (const alias of command.aliases || []) {
+    commands.set(alias, command);
+  }
+}
 
 async function handleMessage(sock, message) {
   try {
@@ -68,21 +70,21 @@ async function handleMessage(sock, message) {
 
     const [commandName, ...args] = commandText.split(/\s+/);
     const normalizedCommandName = commandName.toLowerCase();
+    const command = commands.get(normalizedCommandName);
+    const canonicalCommandName = command?.name || normalizedCommandName;
     const globallyEnabledCommands = new Set(settings.enabledCommands);
 
-    if (normalizedCommandName !== help.name && !globallyEnabledCommands.has(normalizedCommandName)) {
-      console.log(`[COMMAND DISABLED] Command ${normalizedCommandName} sedang dinonaktifkan secara global.`);
+    if (canonicalCommandName !== help.name && !globallyEnabledCommands.has(canonicalCommandName)) {
+      console.log(`[COMMAND DISABLED] Command ${canonicalCommandName} sedang dinonaktifkan secara global.`);
       return;
     }
 
     const allowedCommandsForGroup = settings.groupCommandRules.get(remoteJid);
 
-    if (allowedCommandsForGroup && !allowedCommandsForGroup.has(normalizedCommandName)) {
-      console.log(`[COMMAND BLOCKED] Command ${normalizedCommandName} tidak diizinkan di grup ${remoteJid}`);
+    if (allowedCommandsForGroup && !allowedCommandsForGroup.has(canonicalCommandName)) {
+      console.log(`[COMMAND BLOCKED] Command ${canonicalCommandName} tidak diizinkan di grup ${remoteJid}`);
       return;
     }
-
-    const command = commands.get(normalizedCommandName);
 
     if (!command) {
       return;
