@@ -31,12 +31,19 @@ function pickRandomReply(replies) {
 }
 
 async function convertImageToSticker(imageBuffer) {
+  const metadata = await sharp(imageBuffer).metadata();
+  const webpOptions = metadata.hasAlpha
+    ? { lossless: true, quality: 100, alphaQuality: 100 }
+    : { quality: 80 };
+
   return sharp(imageBuffer)
+    .ensureAlpha()
     .resize(512, 512, {
-      fit: "cover",
-      position: "center"
+      fit: "contain",
+      position: "center",
+      background: { r: 0, g: 0, b: 0, alpha: 0 }
     })
-    .webp({ quality: 80 })
+    .webp(webpOptions)
     .toBuffer();
 }
 
@@ -83,7 +90,7 @@ module.exports = {
 
     if (!mediaSource) {
       await sock.sendMessage(message.key.remoteJid, {
-        text: "Reply gambar/video pendek dengan !stiker, atau kirim media dengan caption !stiker."
+        text: "Reply gambar/video pendek dengan !stiker, atau kirim media dengan caption !stiker. Untuk PNG transparan, kirim sebagai dokumen agar latarnya tetap transparan."
       });
       return;
     }

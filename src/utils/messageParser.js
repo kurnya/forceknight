@@ -98,6 +98,15 @@ function getMediaSourceMessage(message) {
     };
   }
 
+  if (directMessage?.documentMessage?.mimetype?.startsWith("image/")) {
+    return {
+      source: "direct",
+      type: "image",
+      message,
+      isViewOnce: isDirectViewOnce
+    };
+  }
+
   if (directMessage?.videoMessage) {
     return {
       source: "direct",
@@ -118,6 +127,15 @@ function getMediaSourceMessage(message) {
       type: "image",
       message: quotedMessage,
       isViewOnce: isQuotedViewOnce || Boolean(quotedMessage.message.imageMessage.viewOnce)
+    };
+  }
+
+  if (quotedMessage?.message?.documentMessage?.mimetype?.startsWith("image/")) {
+    return {
+      source: "quoted",
+      type: "image",
+      message: quotedMessage,
+      isViewOnce: isQuotedViewOnce
     };
   }
 
