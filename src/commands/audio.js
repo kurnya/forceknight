@@ -2,33 +2,79 @@ const crypto = require("crypto");
 const fs = require("fs/promises");
 const os = require("os");
 const path = require("path");
-const ffmpeg = require("fluent-ffmpeg");
 const ffmpegPath = require("ffmpeg-static");
-const ytdl = require("@distube/ytdl-core");
+const ytDlp = require("yt-dlp-exec");
+
 const settings = require("../config/settings");
 
-ffmpeg.setFfmpegPath(ffmpegPath);
-
 const MAX_AUDIO_SECONDS = 10 * 60;
+const MAX_DOWNLOAD_SIZE = "15M";
 const YOUTUBE_URL_PATTERN = /https?:\/\/(?:www\.|m\.)?(?:youtube\.com|youtu\.be)\/\S+/i;
-const YOUTUBE_PLAYER_CLIENT_FALLBACKS = [
-  ["WEB", "WEB_EMBEDDED", "IOS", "ANDROID", "TV"],
-  ["WEB"],
-  ["WEB_EMBEDDED"],
-  ["TV"],
-  ["IOS"],
-  ["ANDROID"]
-];
 
-let youtubeAgent;
-let youtubeAgentLoaded = false;
+function findYoutubeUrl(args) {
+  const joinedArgs = args.join(" ");
+  const match = joinedArgs.match(YOUTUBE_URL_PATTERN);
+
+  return match?.[0] || "";
+}
+
+function getYoutubeVideoId(url) {
+  try {
+    const parsedUrl = new URL(url);
+    const hostname = parsedUrl.hostname.replace(/^www\.|^m\./, "");
+
+    if (hostname === "youtu.be") {
+      return parsedUrl.pathname.split("/").filter(Boolean)[0] || "";
+    }
+
+    if (hostname === "youtube.com") {
+      if (parsedUrl.pathname === "/watch") {
+        return parsedUrl.searchParams.get("v") || "";
+      }
+
+      const [, route, videoId] = parsedUrl.pathname.split("/");
+
+      if (["embed", "shorts", "live"].includes(route)) {
+        return videoId || "";
+      }
+    }
+  } catch (_error) {
+    return "";
+  }
+
+  return "";
+}
+
+function formatDuration(seconds) {
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+
+  return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
+}
 
 function isYoutubeBotChallenge(error) {
-  return /sign in to confirm|not a bot|confirm you.?re not a bot/i.test(error?.message || "");
+  const message = `${error?.message || ""}\n${error?.stderr || ""}`;
+
+  return /sign in to confirm|not a bot|confirm you.?re not a bot/i.test(message);
 }
 
 function isYoutubeFormatError(error) {
-  return /playable formats|no formats|no playable|no such format/i.test(error?.message || "");
+  const message = `${error?.message || ""}\n${error?.stderr || ""}`;
+
+  return /requested format|no video formats|no formats|unsupported url|403 forbidden|http error 403/i.test(message);
+}
+
+function toNetscapeCookieLine(cookie) {
+  const domain = cookie.domain || ".youtube.com";
+  const includeSubdomains = domain.startsWith(".") ? "TRUE" : "FALSE";
+  const pathName = cookie.path || "/";
+  const secure = cookie.secure ? "TRUE" : "FALSE";
+  const expires = cookie.session ? "0" : String(Math.floor(Number(cookie.expirationDate || 0)));
+  const name = cookie.name || "";
+  const value = cookie.value || "";
+  const domainPrefix = cookie.httpOnly ? "#HttpOnly_" : "";
+
+  return `${domainPrefix}${domain}\t${includeSubdomains}\t${pathName}\t${secure}\t${expires}\t${name}\t${value}`;
 }
 
 async function loadYoutubeCookies() {
@@ -44,119 +90,78 @@ async function loadYoutubeCookies() {
   return null;
 }
 
-async function getYoutubeRequestOptions() {
-  if (youtubeAgentLoaded) {
-    return youtubeAgent ? { agent: youtubeAgent } : {};
-  }
-
-  youtubeAgentLoaded = true;
+async function createCookieFile() {
+  let cookies;
 
   try {
-    const cookies = await loadYoutubeCookies();
-
-    if (cookies) {
-      youtubeAgent = ytdl.createAgent(cookies);
-      console.log("[AUDIO] YouTube cookies aktif untuk downloader.");
-    }
+    cookies = await loadYoutubeCookies();
   } catch (error) {
-    console.error("[AUDIO ERROR] Gagal membaca YouTube cookies:", error);
+    if (error.code !== "ENOENT") {
+      console.error("[AUDIO ERROR] Gagal membaca YouTube cookies:", error);
+    }
+
+    return "";
   }
 
-  return youtubeAgent ? { agent: youtubeAgent } : {};
+  if (!Array.isArray(cookies) || cookies.length === 0) {
+    return "";
+  }
+
+  const cookiePath = path.join(os.tmpdir(), `youtube-cookies-${crypto.randomUUID()}.txt`);
+  const cookieText = [
+    "# Netscape HTTP Cookie File",
+    ...cookies
+      .filter((cookie) => cookie?.name && typeof cookie.value === "string")
+      .map(toNetscapeCookieLine),
+    ""
+  ].join("\n");
+
+  await fs.writeFile(cookiePath, cookieText, "utf8");
+  console.log("[AUDIO] YouTube cookies aktif untuk downloader.");
+
+  return cookiePath;
 }
 
-async function createYoutubeOptions(extraOptions = {}) {
-  const youtubeOptions = await getYoutubeRequestOptions();
-
+function createBaseFlags(cookiePath) {
   return {
-    ...youtubeOptions,
-    ...extraOptions,
-    requestOptions: {
-      ...(youtubeOptions.requestOptions || {}),
-      ...(extraOptions.requestOptions || {}),
-      headers: {
-        ...(youtubeOptions.requestOptions?.headers || {}),
-        ...(extraOptions.requestOptions?.headers || {})
-      }
-    }
+    noPlaylist: true,
+    noWarnings: true,
+    noCallHome: true,
+    cookies: cookiePath || undefined
   };
 }
 
-async function getYoutubeInfoWithFallback(url) {
-  let lastError;
-
-  for (const playerClients of YOUTUBE_PLAYER_CLIENT_FALLBACKS) {
-    const youtubeOptions = await createYoutubeOptions({ playerClients });
-
-    try {
-      const info = await ytdl.getInfo(url, youtubeOptions);
-      return { info, youtubeOptions };
-    } catch (error) {
-      lastError = error;
-      console.error(`[AUDIO ERROR] Gagal mengambil info YouTube dengan client ${playerClients.join(",")}:`, error);
-
-      if (!isYoutubeFormatError(error)) {
-        break;
-      }
-    }
-  }
-
-  throw lastError;
+async function getYoutubeInfo(url, cookiePath) {
+  return ytDlp(url, {
+    ...createBaseFlags(cookiePath),
+    dumpSingleJson: true,
+    skipDownload: true
+  });
 }
 
-function findYoutubeUrl(args) {
-  const joinedArgs = args.join(" ");
-  const match = joinedArgs.match(YOUTUBE_URL_PATTERN);
-
-  return match?.[0] || "";
-}
-
-function formatDuration(seconds) {
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-
-  return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
-}
-
-function chooseAudioFormat(info) {
-  const formats = Array.isArray(info?.formats) ? info.formats : [];
-  const audioFormats = formats
-    .filter((format) => format?.url && format.hasAudio)
-    .sort((a, b) => (b.audioBitrate || 0) - (a.audioBitrate || 0));
-  const audioOnlyFormat = audioFormats.find((format) => !format.hasVideo);
-
-  return audioOnlyFormat || audioFormats[0] || null;
-}
-
-async function convertYoutubeAudioToMp3(info, youtubeOptions) {
+async function downloadYoutubeAudio(url, cookiePath) {
   const tempId = crypto.randomUUID();
+  const outputTemplate = path.join(os.tmpdir(), `youtube-audio-${tempId}.%(ext)s`);
   const outputPath = path.join(os.tmpdir(), `youtube-audio-${tempId}.mp3`);
-  const audioFormat = chooseAudioFormat(info);
-
-  if (!audioFormat) {
-    throw new Error("No playable audio format found");
-  }
 
   try {
-    const audioStream = ytdl.downloadFromInfo(info, {
-      ...youtubeOptions,
-      format: audioFormat,
-      highWaterMark: 1 << 25
-    });
-
-    await new Promise((resolve, reject) => {
-      ffmpeg(audioStream)
-        .audioBitrate(128)
-        .audioCodec("libmp3lame")
-        .format("mp3")
-        .save(outputPath)
-        .on("end", resolve)
-        .on("error", reject);
+    await ytDlp.exec(url, {
+      ...createBaseFlags(cookiePath),
+      extractAudio: true,
+      audioFormat: "mp3",
+      audioQuality: "128K",
+      output: outputTemplate,
+      ffmpegLocation: ffmpegPath,
+      maxFilesize: MAX_DOWNLOAD_SIZE
     });
 
     return fs.readFile(outputPath);
   } finally {
-    await fs.unlink(outputPath).catch(() => {});
+    await Promise.allSettled([
+      fs.unlink(outputPath),
+      fs.unlink(path.join(os.tmpdir(), `youtube-audio-${tempId}.webm`)),
+      fs.unlink(path.join(os.tmpdir(), `youtube-audio-${tempId}.m4a`))
+    ]);
   }
 }
 
@@ -180,7 +185,7 @@ module.exports = {
       return;
     }
 
-    if (!ytdl.validateURL(url)) {
+    if (!getYoutubeVideoId(url)) {
       await sock.sendMessage(
         message.key.remoteJid,
         {
@@ -193,11 +198,12 @@ module.exports = {
       return;
     }
 
+    const cookiePath = await createCookieFile();
+
     let info;
-    let youtubeOptions;
 
     try {
-      ({ info, youtubeOptions } = await getYoutubeInfoWithFallback(url));
+      info = await getYoutubeInfo(url, cookiePath);
     } catch (error) {
       console.error("[AUDIO ERROR] Gagal mengambil info YouTube:", error);
       const text = isYoutubeBotChallenge(error)
@@ -206,6 +212,7 @@ module.exports = {
           ? "YouTube belum memberi format audio yang bisa diunduh dari server ini. Coba refresh cookies YouTube, atau coba link lain."
           : "Fuuka belum bisa membaca link YouTube itu. Coba link lain yaa.";
 
+      await fs.unlink(cookiePath).catch(() => {});
       await sock.sendMessage(
         message.key.remoteJid,
         {
@@ -218,11 +225,11 @@ module.exports = {
       return;
     }
 
-    const details = info.videoDetails;
-    const title = details.title || "YouTube Audio";
-    const durationSeconds = Number(details.lengthSeconds || 0);
+    const title = info.title || "YouTube Audio";
+    const durationSeconds = Number(info.duration || 0);
 
     if (durationSeconds > MAX_AUDIO_SECONDS) {
+      await fs.unlink(cookiePath).catch(() => {});
       await sock.sendMessage(
         message.key.remoteJid,
         {
@@ -246,7 +253,7 @@ module.exports = {
     );
 
     try {
-      const audioBuffer = await convertYoutubeAudioToMp3(info, youtubeOptions);
+      const audioBuffer = await downloadYoutubeAudio(url, cookiePath);
 
       await sock.sendMessage(
         message.key.remoteJid,
@@ -276,6 +283,8 @@ module.exports = {
           quoted: message
         }
       );
+    } finally {
+      await fs.unlink(cookiePath).catch(() => {});
     }
   }
 };

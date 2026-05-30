@@ -3,7 +3,7 @@ const os = require("os");
 const path = require("path");
 
 const YOUTUBE_AUDIO_PREFIX = "youtube-audio-";
-const YOUTUBE_AUDIO_SUFFIX = ".mp3";
+const YOUTUBE_AUDIO_EXTENSIONS = new Set([".m4a", ".mp3"]);
 
 async function cleanupYoutubeAudioTempFiles(maxAgeMs) {
   const tempDir = os.tmpdir();
@@ -23,7 +23,7 @@ async function cleanupYoutubeAudioTempFiles(maxAgeMs) {
     if (
       !entry.isFile() ||
       !entry.name.startsWith(YOUTUBE_AUDIO_PREFIX) ||
-      !entry.name.endsWith(YOUTUBE_AUDIO_SUFFIX)
+      !YOUTUBE_AUDIO_EXTENSIONS.has(path.extname(entry.name))
     ) {
       continue;
     }
