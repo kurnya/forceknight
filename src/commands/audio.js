@@ -3,7 +3,7 @@ const fs = require("fs/promises");
 const os = require("os");
 const path = require("path");
 const ffmpegPath = require("ffmpeg-static");
-const ytDlp = require("yt-dlp-exec");
+const ytDlp = require("youtube-dl-exec");
 
 const settings = require("../config/settings");
 
