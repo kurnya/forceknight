@@ -29,7 +29,7 @@ function parseGroupCommandRules(value) {
 }
 
 function parseEnabledCommands(value) {
-  return (value || "fuuka,stiker")
+  return (value || "fuuka,stiker,audio")
     .split(",")
     .map((command) => command.trim().toLowerCase())
     .filter(Boolean);
@@ -39,6 +39,14 @@ function parsePositiveNumber(value, fallback) {
   const number = Number(value);
 
   return Number.isFinite(number) && number > 0 ? number : fallback;
+}
+
+function parseBoolean(value, fallback) {
+  if (value === undefined || value === "") {
+    return fallback;
+  }
+
+  return ["1", "true", "yes", "on"].includes(String(value).trim().toLowerCase());
 }
 
 const settings = {
@@ -51,7 +59,11 @@ const settings = {
   groupCommandRules: parseGroupCommandRules(process.env.GROUP_COMMAND_RULES),
   whatsappKeepAliveMs: parsePositiveNumber(process.env.WHATSAPP_KEEP_ALIVE_MS, 10000),
   whatsappConnectTimeoutMs: parsePositiveNumber(process.env.WHATSAPP_CONNECT_TIMEOUT_MS, 60000),
-  whatsappDefaultQueryTimeoutMs: parsePositiveNumber(process.env.WHATSAPP_DEFAULT_QUERY_TIMEOUT_MS, 60000)
+  whatsappDefaultQueryTimeoutMs: parsePositiveNumber(process.env.WHATSAPP_DEFAULT_QUERY_TIMEOUT_MS, 60000),
+  tempCleanupEnabled: parseBoolean(process.env.TEMP_CLEANUP_ENABLED, true),
+  tempCleanupIntervalMs: parsePositiveNumber(process.env.TEMP_CLEANUP_INTERVAL_MS, 24 * 60 * 60 * 1000),
+  tempCleanupMaxAgeMs: parsePositiveNumber(process.env.TEMP_CLEANUP_MAX_AGE_MS, 2 * 60 * 60 * 1000),
+  tempCleanupStartupDelayMs: parsePositiveNumber(process.env.TEMP_CLEANUP_STARTUP_DELAY_MS, 60 * 1000)
 };
 
 module.exports = settings;

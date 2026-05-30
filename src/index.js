@@ -11,6 +11,7 @@ const qrcode = require("qrcode-terminal");
 
 const settings = require("./config/settings");
 const { handleMessage } = require("./handlers/messageHandler");
+const { startTempCleanupScheduler } = require("./utils/tempCleanup");
 
 const AUTH_DIR = path.join(process.cwd(), "auth");
 
@@ -137,6 +138,7 @@ async function startBot() {
 }
 
 startHttpServer();
+startTempCleanupScheduler(settings);
 
 startBot().catch((error) => {
   console.error("[FATAL] Bot gagal dijalankan:", error);
