@@ -11,12 +11,24 @@ ffmpeg.setFfmpegPath(ffmpegPath);
 
 const MAX_AUDIO_SECONDS = 10 * 60;
 const YOUTUBE_URL_PATTERN = /https?:\/\/(?:www\.|m\.)?(?:youtube\.com|youtu\.be)\/\S+/i;
+const YOUTUBE_PLAYER_CLIENT_FALLBACKS = [
+  ["WEB", "WEB_EMBEDDED", "IOS", "ANDROID", "TV"],
+  ["WEB"],
+  ["WEB_EMBEDDED"],
+  ["TV"],
+  ["IOS"],
+  ["ANDROID"]
+];
 
 let youtubeAgent;
 let youtubeAgentLoaded = false;
 
 function isYoutubeBotChallenge(error) {
   return /sign in to confirm|not a bot|confirm you.?re not a bot/i.test(error?.message || "");
+}
+
+function isYoutubeFormatError(error) {
+  return /playable formats|no formats|no playable/i.test(error?.message || "");
 }
 
 async function loadYoutubeCookies() {
@@ -53,6 +65,45 @@ async function getYoutubeRequestOptions() {
   return youtubeAgent ? { agent: youtubeAgent } : {};
 }
 
+async function createYoutubeOptions(extraOptions = {}) {
+  const youtubeOptions = await getYoutubeRequestOptions();
+
+  return {
+    ...youtubeOptions,
+    ...extraOptions,
+    requestOptions: {
+      ...(youtubeOptions.requestOptions || {}),
+      ...(extraOptions.requestOptions || {}),
+      headers: {
+        ...(youtubeOptions.requestOptions?.headers || {}),
+        ...(extraOptions.requestOptions?.headers || {})
+      }
+    }
+  };
+}
+
+async function getYoutubeInfoWithFallback(url) {
+  let lastError;
+
+  for (const playerClients of YOUTUBE_PLAYER_CLIENT_FALLBACKS) {
+    const youtubeOptions = await createYoutubeOptions({ playerClients });
+
+    try {
+      const info = await ytdl.getInfo(url, youtubeOptions);
+      return { info, youtubeOptions };
+    } catch (error) {
+      lastError = error;
+      console.error(`[AUDIO ERROR] Gagal mengambil info YouTube dengan client ${playerClients.join(",")}:`, error);
+
+      if (!isYoutubeFormatError(error)) {
+        break;
+      }
+    }
+  }
+
+  throw lastError;
+}
+
 function findYoutubeUrl(args) {
   const joinedArgs = args.join(" ");
   const match = joinedArgs.match(YOUTUBE_URL_PATTERN);
@@ -67,13 +118,12 @@ function formatDuration(seconds) {
   return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
 }
 
-async function convertYoutubeAudioToMp3(url) {
+async function convertYoutubeAudioToMp3(info, youtubeOptions) {
   const tempId = crypto.randomUUID();
   const outputPath = path.join(os.tmpdir(), `youtube-audio-${tempId}.mp3`);
 
   try {
-    const youtubeOptions = await getYoutubeRequestOptions();
-    const audioStream = ytdl(url, {
+    const audioStream = ytdl.downloadFromInfo(info, {
       ...youtubeOptions,
       quality: "highestaudio",
       filter: "audioonly",
@@ -130,14 +180,17 @@ module.exports = {
     }
 
     let info;
+    let youtubeOptions;
 
     try {
-      info = await ytdl.getInfo(url, await getYoutubeRequestOptions());
+      ({ info, youtubeOptions } = await getYoutubeInfoWithFallback(url));
     } catch (error) {
       console.error("[AUDIO ERROR] Gagal mengambil info YouTube:", error);
       const text = isYoutubeBotChallenge(error)
-        ? "YouTube sedang meminta verifikasi anti-bot dari server ini, jadi audio belum bisa diambil. Coba lagi nanti, atau aktifkan YouTube cookies di server."
-        : "Fuuka belum bisa membaca link YouTube itu. Coba link lain yaa.";
+        ? "YouTube sedang meminta verifikasi anti-bot dari server ini, jadi audio belum bisa diambil. Coba refresh YouTube cookies di server."
+        : isYoutubeFormatError(error)
+          ? "YouTube belum memberi format audio yang bisa diunduh dari server ini. Coba refresh cookies YouTube, atau coba link lain."
+          : "Fuuka belum bisa membaca link YouTube itu. Coba link lain yaa.";
 
       await sock.sendMessage(
         message.key.remoteJid,
@@ -179,7 +232,7 @@ module.exports = {
     );
 
     try {
-      const audioBuffer = await convertYoutubeAudioToMp3(url);
+      const audioBuffer = await convertYoutubeAudioToMp3(info, youtubeOptions);
 
       await sock.sendMessage(
         message.key.remoteJid,
@@ -195,8 +248,10 @@ module.exports = {
     } catch (error) {
       console.error("[AUDIO ERROR] Gagal mengunduh audio YouTube:", error);
       const text = isYoutubeBotChallenge(error)
-        ? "YouTube sedang meminta verifikasi anti-bot dari server ini, jadi audio belum bisa diunduh. Coba lagi nanti, atau aktifkan YouTube cookies di server."
-        : "Maaf, audio YouTube-nya gagal diproses. Coba lagi nanti atau pakai link lain yaa.";
+        ? "YouTube sedang meminta verifikasi anti-bot dari server ini, jadi audio belum bisa diunduh. Coba refresh YouTube cookies di server."
+        : isYoutubeFormatError(error)
+          ? "YouTube belum memberi format audio yang bisa diunduh dari server ini. Coba refresh cookies YouTube, atau coba link lain."
+          : "Maaf, audio YouTube-nya gagal diproses. Coba lagi nanti atau pakai link lain yaa.";
 
       await sock.sendMessage(
         message.key.remoteJid,
