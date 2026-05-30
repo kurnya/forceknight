@@ -63,7 +63,9 @@ const settings = {
   tempCleanupEnabled: parseBoolean(process.env.TEMP_CLEANUP_ENABLED, true),
   tempCleanupIntervalMs: parsePositiveNumber(process.env.TEMP_CLEANUP_INTERVAL_MS, 24 * 60 * 60 * 1000),
   tempCleanupMaxAgeMs: parsePositiveNumber(process.env.TEMP_CLEANUP_MAX_AGE_MS, 2 * 60 * 60 * 1000),
-  tempCleanupStartupDelayMs: parsePositiveNumber(process.env.TEMP_CLEANUP_STARTUP_DELAY_MS, 60 * 1000)
+  tempCleanupStartupDelayMs: parsePositiveNumber(process.env.TEMP_CLEANUP_STARTUP_DELAY_MS, 60 * 1000),
+  youtubeCookiesJson: process.env.YOUTUBE_COOKIES_JSON || "",
+  youtubeCookiesPath: process.env.YOUTUBE_COOKIES_PATH || ""
 };
 
 module.exports = settings;
