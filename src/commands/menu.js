@@ -22,32 +22,32 @@ const commandMenuItems = [
   {
     name: "menu",
     usage: (prefix) => `${prefix}menu`,
-    description: "Lihat daftar command yang tersedia di grup ini."
+    description: "Lihat daftar fitur."
   },
   {
     name: "stiker",
     usage: (prefix) => `${prefix}stiker`,
-    description: "Ubah gambar/video pendek menjadi stiker."
+    description: "Buat stiker dari gambar/video."
   },
   {
     name: "audio",
     usage: (prefix) => `${prefix}mp3 <link YouTube>`,
-    description: "Ambil audio MP3 dari link YouTube. Maksimal 10 menit, jangan spam yaa nanti Fuuka cemberut! (｡•́︿•̀｡)"
+    description: "Download audio YouTube."
   },
   {
     name: "help",
     usage: (prefix) => `${prefix}help`,
-    description: "Buka panduan guild dan topik info Force Knight."
+    description: "Panduan guild Force Knight."
   },
   {
     name: "intro",
     usage: (prefix) => `${prefix}intro @member`,
-    description: "Kirim sambutan dan template intro member baru."
+    description: "Sambutan member baru."
   },
   {
     name: "fuuka",
     usage: () => "fuuka",
-    description: "Panggil Fuuka tanpa prefix untuk balasan santai."
+    description: "Panggil Fuuka santai."
   }
 ];
 
@@ -91,16 +91,18 @@ function buildMenuText(prefix, remoteJid) {
   ];
 
   for (const [index, item] of menuItems.entries()) {
-    lines.push(`${index + 1}. ${item.usage(prefix)}`);
-    lines.push(`   ${item.description}`);
+    lines.push(`${index + 1}. ${item.usage(prefix)} - ${item.description}`);
+  }
+
+  if (menuItems.some((item) => item.name === "audio")) {
+    lines.push("", "Catatan MP3:");
+    lines.push("Maksimal 10 menit. Jangan spam yaa, nanti Fuuka cemberut! (｡•́︿•̀｡)");
   }
 
   lines.push(
     "",
-    `Prefix aktif: ${prefix}`,
-    "",
-    pickRandomItem(menuFooterNotes),
-    divider
+    divider,
+    pickRandomItem(menuFooterNotes)
   );
 
   return lines.join("\n");
