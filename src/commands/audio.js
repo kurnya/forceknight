@@ -28,7 +28,7 @@ function isYoutubeBotChallenge(error) {
 }
 
 function isYoutubeFormatError(error) {
-  return /playable formats|no formats|no playable/i.test(error?.message || "");
+  return /playable formats|no formats|no playable|no such format/i.test(error?.message || "");
 }
 
 async function loadYoutubeCookies() {
@@ -118,15 +118,29 @@ function formatDuration(seconds) {
   return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
 }
 
+function chooseAudioFormat(info) {
+  const formats = Array.isArray(info?.formats) ? info.formats : [];
+  const audioFormats = formats
+    .filter((format) => format?.url && format.hasAudio)
+    .sort((a, b) => (b.audioBitrate || 0) - (a.audioBitrate || 0));
+  const audioOnlyFormat = audioFormats.find((format) => !format.hasVideo);
+
+  return audioOnlyFormat || audioFormats[0] || null;
+}
+
 async function convertYoutubeAudioToMp3(info, youtubeOptions) {
   const tempId = crypto.randomUUID();
   const outputPath = path.join(os.tmpdir(), `youtube-audio-${tempId}.mp3`);
+  const audioFormat = chooseAudioFormat(info);
+
+  if (!audioFormat) {
+    throw new Error("No playable audio format found");
+  }
 
   try {
     const audioStream = ytdl.downloadFromInfo(info, {
       ...youtubeOptions,
-      quality: "highestaudio",
-      filter: "audioonly",
+      format: audioFormat,
       highWaterMark: 1 << 25
     });
 
