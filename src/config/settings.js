@@ -65,7 +65,11 @@ const settings = {
   tempCleanupMaxAgeMs: parsePositiveNumber(process.env.TEMP_CLEANUP_MAX_AGE_MS, 2 * 60 * 60 * 1000),
   tempCleanupStartupDelayMs: parsePositiveNumber(process.env.TEMP_CLEANUP_STARTUP_DELAY_MS, 60 * 1000),
   youtubeCookiesJson: process.env.YOUTUBE_COOKIES_JSON || "",
-  youtubeCookiesPath: process.env.YOUTUBE_COOKIES_PATH || ""
+  youtubeCookiesPath: process.env.YOUTUBE_COOKIES_PATH || "",
+  audioMaxSeconds: parsePositiveNumber(process.env.AUDIO_MAX_SECONDS, 10 * 60),
+  audioMaxDownloadSize: process.env.AUDIO_MAX_DOWNLOAD_SIZE || "15M",
+  audioBitrate: process.env.AUDIO_BITRATE || "96K",
+  audioConcurrentJobs: Math.floor(parsePositiveNumber(process.env.AUDIO_CONCURRENT_JOBS, 1))
 };
 
 module.exports = settings;

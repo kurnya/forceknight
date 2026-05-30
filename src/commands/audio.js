@@ -7,9 +7,9 @@ const ytDlp = require("youtube-dl-exec");
 
 const settings = require("../config/settings");
 
-const MAX_AUDIO_SECONDS = 10 * 60;
-const MAX_DOWNLOAD_SIZE = "15M";
 const YOUTUBE_URL_PATTERN = /https?:\/\/(?:www\.|m\.)?(?:youtube\.com|youtu\.be)\/\S+/i;
+
+let activeAudioJobs = 0;
 
 function findYoutubeUrl(args) {
   const joinedArgs = args.join(" ");
@@ -149,10 +149,12 @@ async function downloadYoutubeAudio(url, cookiePath) {
       ...createBaseFlags(cookiePath),
       extractAudio: true,
       audioFormat: "mp3",
-      audioQuality: "128K",
+      audioQuality: settings.audioBitrate,
       output: outputTemplate,
       ffmpegLocation: ffmpegPath,
-      maxFilesize: MAX_DOWNLOAD_SIZE
+      maxFilesize: settings.audioMaxDownloadSize,
+      concurrentFragments: 1,
+      postprocessorArgs: "ffmpeg:-threads 1"
     });
 
     return fs.readFile(outputPath);
@@ -198,6 +200,30 @@ module.exports = {
       return;
     }
 
+    if (activeAudioJobs >= settings.audioConcurrentJobs) {
+      await sock.sendMessage(
+        message.key.remoteJid,
+        {
+          text: "Audio masih diproses. Tunggu proses sebelumnya selesai dulu yaa."
+        },
+        {
+          quoted: message
+        }
+      );
+      return;
+    }
+
+    activeAudioJobs += 1;
+
+    try {
+      await processYoutubeAudioCommand({ sock, message, url });
+    } finally {
+      activeAudioJobs = Math.max(0, activeAudioJobs - 1);
+    }
+  }
+};
+
+async function processYoutubeAudioCommand({ sock, message, url }) {
     const cookiePath = await createCookieFile();
 
     let info;
@@ -228,12 +254,12 @@ module.exports = {
     const title = info.title || "YouTube Audio";
     const durationSeconds = Number(info.duration || 0);
 
-    if (durationSeconds > MAX_AUDIO_SECONDS) {
+    if (durationSeconds > settings.audioMaxSeconds) {
       await fs.unlink(cookiePath).catch(() => {});
       await sock.sendMessage(
         message.key.remoteJid,
         {
-          text: `Audio terlalu panjang (${formatDuration(durationSeconds)}). Maksimal ${formatDuration(MAX_AUDIO_SECONDS)} yaa.`
+          text: `Audio terlalu panjang (${formatDuration(durationSeconds)}). Maksimal ${formatDuration(settings.audioMaxSeconds)} yaa.`
         },
         {
           quoted: message
@@ -286,5 +312,4 @@ module.exports = {
     } finally {
       await fs.unlink(cookiePath).catch(() => {});
     }
-  }
-};
+}
