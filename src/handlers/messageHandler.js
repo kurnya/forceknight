@@ -6,8 +6,9 @@ const audio = require("../commands/audio");
 const fuuka = require("../commands/fuuka");
 const help = require("../commands/help");
 const intro = require("../commands/intro");
+const menu = require("../commands/menu");
 
-const registeredCommands = [stiker, audio, fuuka, help, intro];
+const registeredCommands = [stiker, audio, fuuka, help, intro, menu];
 const commands = new Map(registeredCommands.map((command) => [command.name, command]));
 
 for (const command of registeredCommands) {
@@ -50,6 +51,7 @@ async function handleMessage(sock, message) {
     const isFuukaWithHashPrefix = plainCommandName === `#${fuuka.name}`;
     const isIntroWithoutPrefix = plainCommandName === intro.name;
     const isHelpWithoutPrefix = normalizedMessageText === help.name;
+    const isMenuWithoutPrefix = normalizedMessageText === menu.name;
     const helpTopicKey = help.normalizeTopicKey(messageText.split(/\s+/)[0]);
     const isHelpTopicCode = Boolean(help.topicReplies[helpTopicKey]);
     const mentionedJids = getMentionedJids(message);
@@ -63,7 +65,9 @@ async function handleMessage(sock, message) {
             ? messageText.trim()
             : (isHelpWithoutPrefix || isHelpTopicCode)
               ? `${help.name} ${messageText}`.trim()
-              : "";
+              : isMenuWithoutPrefix
+                ? menu.name
+                : "";
 
     if (!commandText) {
       return;
@@ -75,14 +79,16 @@ async function handleMessage(sock, message) {
     const canonicalCommandName = command?.name || normalizedCommandName;
     const globallyEnabledCommands = new Set(settings.enabledCommands);
 
-    if (canonicalCommandName !== help.name && !globallyEnabledCommands.has(canonicalCommandName)) {
+    const alwaysAllowedCommands = new Set([help.name, menu.name]);
+
+    if (!alwaysAllowedCommands.has(canonicalCommandName) && !globallyEnabledCommands.has(canonicalCommandName)) {
       console.log(`[COMMAND DISABLED] Command ${canonicalCommandName} sedang dinonaktifkan secara global.`);
       return;
     }
 
     const allowedCommandsForGroup = settings.groupCommandRules.get(remoteJid);
 
-    if (allowedCommandsForGroup && !allowedCommandsForGroup.has(canonicalCommandName)) {
+    if (allowedCommandsForGroup && !alwaysAllowedCommands.has(canonicalCommandName) && !allowedCommandsForGroup.has(canonicalCommandName)) {
       console.log(`[COMMAND BLOCKED] Command ${canonicalCommandName} tidak diizinkan di grup ${remoteJid}`);
       return;
     }
