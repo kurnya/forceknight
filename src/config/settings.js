@@ -29,7 +29,7 @@ function parseGroupCommandRules(value) {
 }
 
 function parseEnabledCommands(value) {
-  return (value || "fuuka,stiker,gambar,audio,intro")
+  return (value || "fuuka,stiker,gambar,gif,video,audio,intro")
     .split(",")
     .map((command) => command.trim().toLowerCase())
     .filter(Boolean);

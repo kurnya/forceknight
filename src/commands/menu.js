@@ -35,6 +35,16 @@ const commandMenuItems = [
     description: "Ubah stiker jadi gambar PNG."
   },
   {
+    name: "gif",
+    usage: (prefix) => `${prefix}gif`,
+    description: "Ubah stiker bergerak jadi GIF."
+  },
+  {
+    name: "video",
+    usage: (prefix) => `${prefix}video`,
+    description: "Ubah stiker bergerak jadi MP4."
+  },
+  {
     name: "audio",
     usage: (prefix) => `${prefix}mp3 <link YouTube>`,
     description: "Download audio YouTube."
