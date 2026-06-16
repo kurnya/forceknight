@@ -30,6 +30,11 @@ const commandMenuItems = [
     description: "Buat stiker dari gambar/video."
   },
   {
+    name: "gambar",
+    usage: (prefix) => `${prefix}gambar`,
+    description: "Ubah stiker jadi gambar PNG."
+  },
+  {
     name: "audio",
     usage: (prefix) => `${prefix}mp3 <link YouTube>`,
     description: "Download audio YouTube."

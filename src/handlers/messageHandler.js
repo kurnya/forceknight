@@ -2,13 +2,14 @@ const settings = require("../config/settings");
 const { isAllowedGroup } = require("../utils/groupValidator");
 const { extractMessageText, getMentionedJids } = require("../utils/messageParser");
 const stiker = require("../commands/stiker");
+const gambar = require("../commands/gambar");
 const audio = require("../commands/audio");
 const fuuka = require("../commands/fuuka");
 const help = require("../commands/help");
 const intro = require("../commands/intro");
 const menu = require("../commands/menu");
 
-const registeredCommands = [stiker, audio, fuuka, help, intro, menu];
+const registeredCommands = [stiker, gambar, audio, fuuka, help, intro, menu];
 const commands = new Map(registeredCommands.map((command) => [command.name, command]));
 
 for (const command of registeredCommands) {

@@ -152,6 +152,30 @@ function getMediaSourceMessage(message) {
   return null;
 }
 
+function getStickerSourceMessage(message) {
+  const directMessage = unwrapMessageContent(message?.message);
+
+  if (directMessage?.stickerMessage) {
+    return {
+      source: "direct",
+      message,
+      isAnimated: Boolean(directMessage.stickerMessage.isAnimated)
+    };
+  }
+
+  const quotedMessage = createQuotedMessage(message);
+
+  if (quotedMessage?.message?.stickerMessage) {
+    return {
+      source: "quoted",
+      message: quotedMessage,
+      isAnimated: Boolean(quotedMessage.message.stickerMessage.isAnimated)
+    };
+  }
+
+  return null;
+}
+
 function getQuotedText(message) {
   const quotedMessage = createQuotedMessage(message);
 
@@ -181,6 +205,7 @@ function getMentionedJids(message) {
 module.exports = {
   extractMessageText,
   getMediaSourceMessage,
+  getStickerSourceMessage,
   getQuotedText,
   getMentionedJids
 };
