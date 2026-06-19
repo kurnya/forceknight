@@ -1,3 +1,11 @@
+---
+title: ForceknightBot
+emoji: 🤖
+colorFrom: blue
+colorTo: gray
+sdk: docker
+pinned: false
+---
 # WhatsApp Bot
 
 Bot WhatsApp berbasis Node.js dan Baileys dengan struktur modular, whitelist grup, dan siap dijalankan lokal maupun dideploy ke Render/Koyeb.
