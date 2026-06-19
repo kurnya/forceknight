@@ -1,0 +1,10 @@
+node_modules
+auth
+.env
+.git
+.gitignore
+.dockerignore
+backup
+README.md
+*.ogg
+youtube-cookies.json
