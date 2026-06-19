@@ -21,7 +21,7 @@ configureMediaQueue({
   queueLimit: settings.mediaQueueLimit
 });
 
-const AUTH_DIR = process.env.AUTH_DIR || path.join(process.cwd(), "auth");
+const AUTH_DIR = path.join(process.cwd(), "auth");
 
 let isStarting = false;
 let reconnectTimer = null;
