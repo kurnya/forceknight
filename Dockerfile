@@ -1,5 +1,65 @@
 FROM node:20-slim
 
+# Cache bust v2 - forces fresh build with network diagnostic tools
+ARG CACHE_BUST=20260619v2
+
+# Install ffmpeg, curl, dnsutils for connectivity debugging
+RUN apt-get update && \
+    apt-get install -y ffmpeg curl dnsutils && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy dependency files first (faster rebuilds)
+COPY package.json package-lock.json ./
+
+# Install dependencies
+RUN npm ci --omit=dev
+
+# Copy source code
+COPY . .
+
+# Make startup script executable
+RUN chmod +x start.sh
+
+# Hugging Face Spaces requires port 7860
+ENV PORT=7860
+
+EXPOSE 7860
+
+CMD ["sh", "start.sh"]
+FROM node:20-slim
+
+# Cache bust: v2 - add network diagnostic tools
+ARG CACHE_BUST=20260619v2
+
+# Install ffmpeg, curl, dnsutils for connectivity debugging
+RUN apt-get update && \
+    apt-get install -y ffmpeg curl dnsutils && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy dependency files first (faster rebuilds)
+COPY package.json package-lock.json ./
+
+# Install dependencies
+RUN npm ci --omit=dev
+
+# Copy source code
+COPY . .
+
+# Make startup script executable
+RUN chmod +x start.sh
+
+# Hugging Face Spaces requires port 7860
+ENV PORT=7860
+
+EXPOSE 7860
+
+CMD ["sh", "start.sh"]
+FROM node:20-slim
+
 # Install ffmpeg, curl, dnsutils for connectivity debugging
 RUN apt-get update && \
     apt-get install -y ffmpeg curl dnsutils && \
