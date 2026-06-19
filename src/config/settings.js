@@ -69,7 +69,11 @@ const settings = {
   audioMaxSeconds: parsePositiveNumber(process.env.AUDIO_MAX_SECONDS, 10 * 60),
   audioMaxDownloadSize: process.env.AUDIO_MAX_DOWNLOAD_SIZE || "15M",
   audioBitrate: process.env.AUDIO_BITRATE || "96K",
-  audioConcurrentJobs: Math.floor(parsePositiveNumber(process.env.AUDIO_CONCURRENT_JOBS, 1))
+  audioConcurrentJobs: Math.floor(parsePositiveNumber(process.env.AUDIO_CONCURRENT_JOBS, 1)),
+  mediaMaxConcurrent: Math.floor(parsePositiveNumber(process.env.MEDIA_MAX_CONCURRENT, 1)),
+  mediaQueueLimit: Math.floor(parsePositiveNumber(process.env.MEDIA_QUEUE_LIMIT, 5)),
+  ffmpegTimeoutMs: parsePositiveNumber(process.env.FFMPEG_TIMEOUT_MS, 120000),
+  sharpConcurrency: Math.floor(parsePositiveNumber(process.env.SHARP_CONCURRENCY, 1))
 };
 
 module.exports = settings;

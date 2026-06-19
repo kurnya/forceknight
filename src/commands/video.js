@@ -8,7 +8,9 @@ const ffmpegPath = require("ffmpeg-static");
 const P = require("pino");
 const sharp = require("sharp");
 
+const settings = require("../config/settings");
 const { getStickerSourceMessage } = require("../utils/messageParser");
+const { runMediaJob } = require("../utils/mediaQueue");
 
 ffmpeg.setFfmpegPath(ffmpegPath);
 
@@ -31,16 +33,32 @@ async function convertGifToMp4(gifBuffer) {
 
   try {
     await new Promise((resolve, reject) => {
-      ffmpeg(inputPath)
+      let timedOut = false;
+      let ffmpegProc = null;
+
+      const timeoutId = setTimeout(() => {
+        timedOut = true;
+        try { ffmpegProc?.kill("SIGKILL"); } catch (_e) { /* ignore */ }
+        reject(new Error("FFmpeg timeout"));
+      }, settings.ffmpegTimeoutMs);
+
+      ffmpegProc = ffmpeg(inputPath)
         .outputOptions([
+          "-threads 1",
           "-movflags +faststart",
           "-pix_fmt yuv420p",
           "-vf scale=trunc(iw/2)*2:trunc(ih/2)*2"
         ])
         .format("mp4")
         .save(outputPath)
-        .on("end", resolve)
-        .on("error", reject);
+        .on("end", () => {
+          clearTimeout(timeoutId);
+          if (!timedOut) resolve();
+        })
+        .on("error", (error) => {
+          clearTimeout(timeoutId);
+          if (!timedOut) reject(error);
+        });
     });
 
     return fs.readFile(outputPath);
@@ -85,23 +103,27 @@ module.exports = {
       return;
     }
 
-    let stickerBuffer;
-    let gifBuffer;
-    let videoBuffer;
-
     try {
-      stickerBuffer = await downloadMediaMessage(
-        stickerSource.message,
-        "buffer",
-        {},
-        {
-          logger: P({ level: "silent" }),
-          reuploadRequest: sock.updateMediaMessage
-        }
-      );
+      const videoBuffer = await runMediaJob(async () => {
+        const stickerBuffer = await downloadMediaMessage(
+          stickerSource.message,
+          "buffer",
+          {},
+          {
+            logger: P({ level: "silent" }),
+            reuploadRequest: sock.updateMediaMessage
+          }
+        );
 
-      gifBuffer = await convertAnimatedStickerToGif(stickerBuffer);
-      videoBuffer = await convertGifToMp4(gifBuffer);
+        await sock.sendMessage(
+          message.key.remoteJid,
+          { text: "Sedang proses video... tunggu sebentar yaa~ (๑˃ᴗ˂)ﻭ" },
+          { quoted: message }
+        );
+
+        const gifBuffer = await convertAnimatedStickerToGif(stickerBuffer);
+        return convertGifToMp4(gifBuffer);
+      });
 
       await sock.sendMessage(
         message.key.remoteJid,
@@ -114,21 +136,28 @@ module.exports = {
         }
       );
     } catch (error) {
-      console.error("[VIDEO ERROR] Gagal mengubah stiker menjadi video:", error);
+      if (error.code === "MEDIA_QUEUE_FULL") {
+        await sock.sendMessage(
+          message.key.remoteJid,
+          {
+            text: "Antrian video sedang penuh. Coba lagi sebentar yaa~ (｡•́︿•̀｡)"
+          },
+          { quoted: message }
+        );
+        return;
+      }
+
+      console.error("[VIDEO ERROR]", error);
 
       await sock.sendMessage(
         message.key.remoteJid,
         {
-          text: "Maaf yaa, Fuuka belum bisa ubah stiker ini jadi video. Coba pakai !gif atau stiker animasi lain dulu."
+          text: error.message === "FFmpeg timeout"
+            ? "Proses videonya terlalu lama. Coba stiker animasi yang lebih pendek yaa~ (｡•́︿•̀｡)"
+            : "Maaf yaa, Fuuka belum bisa ubah stiker ini jadi video. Coba pakai !gif atau stiker animasi lain dulu."
         },
-        {
-          quoted: message
-        }
+        { quoted: message }
       );
-    } finally {
-      stickerBuffer = null;
-      gifBuffer = null;
-      videoBuffer = null;
     }
   }
 };

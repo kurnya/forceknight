@@ -8,7 +8,9 @@ const ffmpegPath = require("ffmpeg-static");
 const P = require("pino");
 const sharp = require("sharp");
 
+const settings = require("../config/settings");
 const { getMediaSourceMessage } = require("../utils/messageParser");
+const { runMediaJob } = require("../utils/mediaQueue");
 
 const MAX_ANIMATED_STICKER_SECONDS = 6;
 const viewOncePrivacyReplies = [
@@ -56,9 +58,19 @@ async function convertVideoToSticker(videoBuffer) {
 
   try {
     await new Promise((resolve, reject) => {
-      ffmpeg(inputPath)
+      let timedOut = false;
+      let ffmpegProc = null;
+
+      const timeoutId = setTimeout(() => {
+        timedOut = true;
+        try { ffmpegProc?.kill("SIGKILL"); } catch (_e) { /* ignore */ }
+        reject(new Error("FFmpeg timeout"));
+      }, settings.ffmpegTimeoutMs);
+
+      ffmpegProc = ffmpeg(inputPath)
         .outputOptions([
           "-t 6",
+          "-threads 1",
           "-vf scale=512:512:force_original_aspect_ratio=increase,crop=512:512,fps=10",
           "-loop 0",
           "-an",
@@ -68,8 +80,14 @@ async function convertVideoToSticker(videoBuffer) {
         ])
         .format("webp")
         .save(outputPath)
-        .on("end", resolve)
-        .on("error", reject);
+        .on("end", () => {
+          clearTimeout(timeoutId);
+          if (!timedOut) resolve();
+        })
+        .on("error", (error) => {
+          clearTimeout(timeoutId);
+          if (!timedOut) reject(error);
+        });
     });
 
     return fs.readFile(outputPath);
@@ -108,24 +126,48 @@ module.exports = {
       return;
     }
 
-    let mediaBuffer;
-    let stickerBuffer;
+    let processingSent = false;
 
     try {
-      // Media diproses langsung di memory, tidak disimpan ke file lokal.
-      mediaBuffer = await downloadMediaMessage(
-        mediaSource.message,
-        "buffer",
-        {},
-        {
-          logger: P({ level: "silent" }),
-          reuploadRequest: sock.updateMediaMessage
-        }
-      );
+      const stickerBuffer = await runMediaJob(async () => {
+        const mediaBuffer = await downloadMediaMessage(
+          mediaSource.message,
+          "buffer",
+          {},
+          {
+            logger: P({ level: "silent" }),
+            reuploadRequest: sock.updateMediaMessage
+          }
+        );
 
-      stickerBuffer = mediaSource.type === "video"
-        ? await convertVideoToSticker(mediaBuffer)
-        : await convertImageToSticker(mediaBuffer);
+        if (mediaSource.type === "video") {
+          if (mediaSource.seconds > MAX_ANIMATED_STICKER_SECONDS) {
+            await sock.sendMessage(
+              message.key.remoteJid,
+              {
+                text: `Video terlalu panjang (${mediaSource.seconds}s). Maksimal ${MAX_ANIMATED_STICKER_SECONDS} detik untuk stiker animasi.`
+              },
+              { quoted: message }
+            );
+            return null;
+          }
+
+          await sock.sendMessage(
+            message.key.remoteJid,
+            { text: "Sedang proses stiker video... tunggu sebentar yaa~ (๑˃ᴗ˂)ﻭ" },
+            { quoted: message }
+          );
+          processingSent = true;
+        }
+
+        return mediaSource.type === "video"
+          ? await convertVideoToSticker(mediaBuffer)
+          : await convertImageToSticker(mediaBuffer);
+      });
+
+      if (!stickerBuffer) {
+        return;
+      }
 
       await sock.sendMessage(
         message.key.remoteJid,
@@ -136,9 +178,29 @@ module.exports = {
           quoted: message
         }
       );
-    } finally {
-      mediaBuffer = null;
-      stickerBuffer = null;
+    } catch (error) {
+      if (error.code === "MEDIA_QUEUE_FULL") {
+        await sock.sendMessage(
+          message.key.remoteJid,
+          {
+            text: "Antrian stiker sedang penuh. Coba lagi sebentar yaa~ (｡•́︿•̀｡)"
+          },
+          { quoted: message }
+        );
+        return;
+      }
+
+      console.error("[STIKER ERROR]", error);
+
+      await sock.sendMessage(
+        message.key.remoteJid,
+        {
+          text: error.message === "FFmpeg timeout"
+            ? "Proses stiker videonya terlalu lama. Coba video yang lebih pendek yaa~ (｡•́︿•̀｡)"
+            : "Maaf yaa, Fuuka belum bisa bikin stiker dari media ini. Coba media lain dulu~ (´；ω；`)"
+        },
+        { quoted: message }
+      );
     }
   }
 };

@@ -6,10 +6,9 @@ const ffmpegPath = require("ffmpeg-static");
 const ytDlp = require("youtube-dl-exec");
 
 const settings = require("../config/settings");
+const { runMediaJob } = require("../utils/mediaQueue");
 
 const YOUTUBE_URL_PATTERN = /https?:\/\/(?:www\.|m\.)?(?:youtube\.com|youtu\.be)\/\S+/i;
-
-let activeAudioJobs = 0;
 
 function findYoutubeUrl(args) {
   const joinedArgs = args.join(" ");
@@ -200,25 +199,29 @@ module.exports = {
       return;
     }
 
-    if (activeAudioJobs >= settings.audioConcurrentJobs) {
+    try {
+      await runMediaJob(() => processYoutubeAudioCommand({ sock, message, url }));
+    } catch (error) {
+      if (error.code === "MEDIA_QUEUE_FULL") {
+        await sock.sendMessage(
+          message.key.remoteJid,
+          {
+            text: "Antrian audio sedang penuh. Coba lagi sebentar yaa~ (｡•́︿•̀｡)"
+          },
+          { quoted: message }
+        );
+        return;
+      }
+
+      console.error("[AUDIO ERROR]", error);
+
       await sock.sendMessage(
         message.key.remoteJid,
         {
-          text: "Audio masih diproses. Tunggu proses sebelumnya selesai dulu yaa."
+          text: "Maaf, audio YouTube-nya gagal diproses. Coba lagi nanti atau pakai link lain yaa."
         },
-        {
-          quoted: message
-        }
+        { quoted: message }
       );
-      return;
-    }
-
-    activeAudioJobs += 1;
-
-    try {
-      await processYoutubeAudioCommand({ sock, message, url });
-    } finally {
-      activeAudioJobs = Math.max(0, activeAudioJobs - 1);
     }
   }
 };

@@ -3,6 +3,7 @@ const P = require("pino");
 const sharp = require("sharp");
 
 const { getStickerSourceMessage } = require("../utils/messageParser");
+const { runMediaJob } = require("../utils/mediaQueue");
 
 async function convertStaticStickerToImage(stickerBuffer) {
   return sharp(stickerBuffer)
@@ -40,23 +41,22 @@ module.exports = {
       return;
     }
 
-    let stickerBuffer;
-    let imageBuffer;
-
     try {
-      stickerBuffer = await downloadMediaMessage(
-        stickerSource.message,
-        "buffer",
-        {},
-        {
-          logger: P({ level: "silent" }),
-          reuploadRequest: sock.updateMediaMessage
-        }
-      );
+      const imageBuffer = await runMediaJob(async () => {
+        const stickerBuffer = await downloadMediaMessage(
+          stickerSource.message,
+          "buffer",
+          {},
+          {
+            logger: P({ level: "silent" }),
+            reuploadRequest: sock.updateMediaMessage
+          }
+        );
 
-      imageBuffer = stickerSource.isAnimated
-        ? await convertAnimatedStickerToImage(stickerBuffer)
-        : await convertStaticStickerToImage(stickerBuffer);
+        return stickerSource.isAnimated
+          ? await convertAnimatedStickerToImage(stickerBuffer)
+          : await convertStaticStickerToImage(stickerBuffer);
+      });
 
       await sock.sendMessage(
         message.key.remoteJid,
@@ -72,20 +72,26 @@ module.exports = {
         }
       );
     } catch (error) {
-      console.error("[GAMBAR ERROR] Gagal mengubah stiker menjadi gambar:", error);
+      if (error.code === "MEDIA_QUEUE_FULL") {
+        await sock.sendMessage(
+          message.key.remoteJid,
+          {
+            text: "Antrian gambar sedang penuh. Coba lagi sebentar yaa~ (｡•́︿•̀｡)"
+          },
+          { quoted: message }
+        );
+        return;
+      }
+
+      console.error("[GAMBAR ERROR]", error);
 
       await sock.sendMessage(
         message.key.remoteJid,
         {
           text: "Maaf yaa, Fuuka belum bisa ubah stiker ini jadi gambar. Coba kirim stiker lain atau stiker statis dulu."
         },
-        {
-          quoted: message
-        }
+        { quoted: message }
       );
-    } finally {
-      stickerBuffer = null;
-      imageBuffer = null;
     }
   }
 };
