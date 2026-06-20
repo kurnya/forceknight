@@ -207,5 +207,6 @@ module.exports = {
   getMediaSourceMessage,
   getStickerSourceMessage,
   getQuotedText,
-  getMentionedJids
+  getMentionedJids,
+  getQuotedMessageContext
 };

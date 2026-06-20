@@ -1,3 +1,5 @@
+const { askFuukaAI } = require("../services/groqService");
+
 const fuukaResponses = {
   senang: [
     "Fuuka datanggg~ (≧▽≦)ゞ hari ini mood-nya cerah banget, hehehe!",
@@ -353,7 +355,7 @@ module.exports = {
   name: "fuuka",
   description: "Fuuka membalas dengan variasi ekspresi lucu dan sapaan waktu.",
   shouldTriggerWithoutPrefix,
-  execute: async ({ sock, message, rawText = "" }) => {
+  execute: async ({ sock, message, rawText = "", isBotMentioned = false, isReplyToBot = false, quotedText = "" }) => {
     const senderId = message.key.participant || message.key.remoteJid;
     const chatId = message.key.remoteJid;
 
@@ -363,9 +365,31 @@ module.exports = {
     markCooldown(senderId);
 
     try {
+      // Try local patterns first
       const complimentResponse = getComplimentResponse(rawText, chatId);
       const greetingResponse = getGreetingResponse(rawText, chatId);
-      const text = complimentResponse || greetingResponse || getRandomFuukaResponse(chatId).response;
+      const localResponse = complimentResponse || greetingResponse;
+
+      let text;
+
+      if (localResponse) {
+        // Local pattern matched
+        text = localResponse;
+      } else if (isBotMentioned) {
+        // Bot was @mentioned but no local pattern matched → call AI
+        const cleanedMessage = rawText.replace(/@\d+/g, "").trim();
+        const aiResponse = await askFuukaAI(cleanedMessage || "halo");
+        text = aiResponse || getRandomFuukaResponse(chatId).response;
+        console.log(`[FUUKA AI] ${aiResponse ? "AI response" : "Fallback to local"} for: ${cleanedMessage}`);
+      } else if (isReplyToBot) {
+        // User replied to Fuuka's message → continue conversation with AI
+        const aiResponse = await askFuukaAI(rawText, quotedText);
+        text = aiResponse || getRandomFuukaResponse(chatId).response;
+        console.log(`[FUUKA AI] ${aiResponse ? "Reply conversation" : "Fallback to local"} | context: ${quotedText.substring(0, 50)}`);
+      } else {
+        // Exact "fuuka" or other non-AI trigger → local response
+        text = getRandomFuukaResponse(chatId).response;
+      }
 
       await sock.sendMessage(
         chatId,

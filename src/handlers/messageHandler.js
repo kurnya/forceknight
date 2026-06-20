@@ -1,6 +1,6 @@
 const settings = require("../config/settings");
 const { isAllowedGroup } = require("../utils/groupValidator");
-const { extractMessageText, getMentionedJids } = require("../utils/messageParser");
+const { extractMessageText, getMentionedJids, getQuotedMessageContext } = require("../utils/messageParser");
 const stiker = require("../commands/stiker");
 const gambar = require("../commands/gambar");
 const gif = require("../commands/gif");
@@ -50,14 +50,45 @@ async function handleMessage(sock, message) {
     const hasPrefix = messageText.startsWith(settings.prefix);
     const normalizedMessageText = messageText.toLowerCase();
     const plainCommandName = normalizedMessageText.split(/\s+/)[0];
-    const isFuukaWithoutPrefix = fuuka.shouldTriggerWithoutPrefix(normalizedMessageText);
+    const mentionedJids = getMentionedJids(message);
+    const botJid = sock.user?.id || "";
+    const botLid = sock.user?.lid || "";
+    // Extract just the number part (before : or @) for comparison
+    const botJidNum = botJid.split(/[:@]/)[0];
+    const botLidNum = botLid.split(/[:@]/)[0];
+    const isBotMentioned = mentionedJids.length > 0 && mentionedJids.some((jid) => {
+      const jidNum = jid.split(/[:@]/)[0];
+      return jidNum === botJidNum || jidNum === botLidNum;
+    });
+
+    // Check if replying to a Fuuka message
+    const quotedCtx = getQuotedMessageContext(message);
+    const quotedParticipant = quotedCtx?.participant || "";
+    const quotedPartNum = quotedParticipant.split(/[:@]/)[0];
+    const isReplyToBot = quotedParticipant && (quotedPartNum === botJidNum || quotedPartNum === botLidNum);
+    // Get quoted message text for conversation context
+    let quotedText = "";
+    if (isReplyToBot && quotedCtx?.quotedMessage) {
+      const qMsg = quotedCtx.quotedMessage;
+      quotedText = (qMsg.conversation || qMsg.extendedTextMessage?.text || "").trim();
+    }
+
+    if (mentionedJids.length > 0) {
+      console.log("[DEBUG] mentionedJids:", mentionedJids);
+      console.log("[DEBUG] botJidNum:", botJidNum, "| botLidNum:", botLidNum);
+      console.log("[DEBUG] isBotMentioned:", isBotMentioned);
+    }
+    if (isReplyToBot) {
+      console.log("[DEBUG] Reply to bot detected | quotedText:", quotedText.substring(0, 80));
+    }
+
+    const isFuukaWithoutPrefix = fuuka.shouldTriggerWithoutPrefix(normalizedMessageText) || isBotMentioned || isReplyToBot;
     const isFuukaWithHashPrefix = plainCommandName === `#${fuuka.name}`;
     const isIntroWithoutPrefix = plainCommandName === intro.name;
     const isHelpWithoutPrefix = normalizedMessageText === help.name;
     const isMenuWithoutPrefix = normalizedMessageText === menu.name;
     const helpTopicKey = help.normalizeTopicKey(messageText.split(/\s+/)[0]);
     const isHelpTopicCode = Boolean(help.topicReplies[helpTopicKey]);
-    const mentionedJids = getMentionedJids(message);
     const commandText = hasPrefix
       ? messageText.slice(settings.prefix.length).trim()
       : isFuukaWithHashPrefix
@@ -106,7 +137,10 @@ async function handleMessage(sock, message) {
       prefix: settings.prefix,
       args,
       mentionedJids,
-      rawText: messageText
+      rawText: messageText,
+      isBotMentioned,
+      isReplyToBot,
+      quotedText
     });
   } catch (error) {
     console.error("[MESSAGE ERROR] Gagal memproses pesan:", error);
