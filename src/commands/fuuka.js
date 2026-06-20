@@ -70,7 +70,16 @@ const complimentPatterns = [
   "imut",
   "lucu",
   "kawai",
-  "kawaii"
+  "kawaii",
+  "cantik",
+  "manis",
+  "gemas",
+  "menggemaskan",
+  "imut banget",
+  "lucu banget",
+  "so cute",
+  "cute",
+  "adorable"
 ];
 
 const complimentResponses = {
@@ -193,6 +202,20 @@ const greetingMoodResponses = {
     "{greeting} juga ya... kamu jangan senang dulu, ini balasan standar kok! (⁄⁄•⁄ω⁄•⁄⁄)",
     "Fuuka balas {greeting}, tapi bukan berarti kamu spesial... ya mungkin dikit. (><)",
     "{greeting} juga... udah sana, jalani harimu yang baik, jangan bikin Fuuka mikir aneh-aneh! (//▽//)"
+  ],
+  sok_sibuk: [
+    "Tsk, {greeting} juga. Fuuka lagi padat nih, tapi nyempetin balas kok~ (￣▽￣*)",
+    "{greeting}~ bentar ya, Fuuka lagi pura-pura sibuk sama hal penting. (⌒_⌒;)",
+    "Hm, {greeting} juga. Fuuka sebenernya ada rapat imajiner lima menit lagi... (￣ω￣;)",
+    "{greeting} juga deh! Fuuka izin hadir sebentar di tengah jadwal super padat ini. (๑•̀ㅂ•́)و",
+    "Sebenernya Fuuka lagi ngawasin sesuatu yang urgent... tapi {greeting} dulu deh. (￣ڡ￣)",
+    "{greeting}~ Fuuka jawab sambil cek jam. Padat banget hari ini, tapi kamu prioritas kok. (u_u)",
+    "Fuuka lagi mode produktif nih, tapi {greeting} juga yaa! Lima menit aja lho. (￣▽￣)ノ",
+    "{greeting} juga! Fuuka selipin kamu di antara jadwal yang sebenernya agak ngarang. (≖ᴗ≖✿)",
+    "Tsk tsk, {greeting}. Fuuka habis ini lanjut kelihatan sibuk lagi ya, jangan kangen. (￣ー￣)",
+    "{greeting} juga~ Fuuka jawab sambil gaya profesional. Nanti lanjut sibuk lagi. (๑¯ω¯๑)",
+    "Di agenda Fuuka: balas {greeting} kamu, lalu lanjut jalan manis. Padat sekali hari ini. (≧▽≦)",
+    "{greeting}! Fuuka sempetin hadir di tengah kesibukan level sultan ini, hehehe. (￣∇￣)"
   ]
 };
 
@@ -202,6 +225,67 @@ function getRandomItem(items) {
 
 function normalizeText(value) {
   return (value || "").toLowerCase().trim().replace(/\s+/g, " ");
+}
+
+// ── Duplicate response prevention ──────────────────────────────────────────
+const lastResponseMap = new Map();
+
+function pickUnique(items, key) {
+  const last = lastResponseMap.get(key);
+  const pool = items.length > 1 ? items.filter((item) => item !== last) : items;
+  const chosen = getRandomItem(pool);
+  lastResponseMap.set(key, chosen);
+  return chosen;
+}
+
+// ── Cooldown tracking ──────────────────────────────────────────────────────
+const cooldownMap = new Map();
+const COOLDOWN_MS = 3000;
+
+function isOnCooldown(userId) {
+  const last = cooldownMap.get(userId);
+  if (!last) return false;
+  return Date.now() - last < COOLDOWN_MS;
+}
+
+function markCooldown(userId) {
+  cooldownMap.set(userId, Date.now());
+}
+
+// ── Time-aware mood selection ──────────────────────────────────────────────
+function getTimeWeightedMood(moods) {
+  const hour = new Date().getHours();
+  const weights = {};
+
+  for (const mood of moods) {
+    weights[mood] = 1;
+  }
+
+  // Pagi (5-10): lebih ceria
+  if (hour >= 5 && hour < 11) {
+    if (weights.senang !== undefined) weights.senang += 2;
+  }
+  // Siang-sore (11-17): lebih sok sibuk
+  else if (hour >= 11 && hour < 18) {
+    if (weights.sok_sibuk !== undefined) weights.sok_sibuk += 2;
+  }
+  // Malam (18-23): lebih tsundere
+  else if (hour >= 18 && hour < 24) {
+    if (weights.tsundere !== undefined) weights.tsundere += 2;
+  }
+  // Dini hari (0-4): lebih marah (ngantuk)
+  else {
+    if (weights.marah !== undefined) weights.marah += 2;
+  }
+
+  const weighted = [];
+  for (const mood of moods) {
+    for (let i = 0; i < (weights[mood] || 1); i++) {
+      weighted.push(mood);
+    }
+  }
+
+  return getRandomItem(weighted);
 }
 
 function detectGreetingPeriod(text) {
@@ -235,34 +319,34 @@ function shouldTriggerWithoutPrefix(text) {
   return normalizedText === "fuuka" || Boolean(detectGreetingPeriod(normalizedText)) || isComplimentTrigger(normalizedText);
 }
 
-function getRandomFuukaResponse() {
+function getRandomFuukaResponse(chatId) {
   const moods = Object.keys(fuukaResponses);
-  const mood = getRandomItem(moods);
-  const response = getRandomItem(fuukaResponses[mood]);
+  const mood = getTimeWeightedMood(moods);
+  const response = pickUnique(fuukaResponses[mood], `fuuka:${chatId}:${mood}`);
 
   return { mood, response };
 }
 
-function getGreetingResponse(text) {
+function getGreetingResponse(text, chatId) {
   const period = detectGreetingPeriod(text);
 
   if (!period) {
     return null;
   }
 
-  const mood = getRandomItem(Object.keys(greetingMoodResponses));
-  const template = getRandomItem(greetingMoodResponses[mood]);
+  const mood = getTimeWeightedMood(Object.keys(greetingMoodResponses));
+  const template = pickUnique(greetingMoodResponses[mood], `greet:${chatId}:${mood}`);
 
   return template.replace(/\{greeting\}/g, greetingLabels[period]);
 }
 
-function getComplimentResponse(text) {
+function getComplimentResponse(text, chatId) {
   if (!isComplimentTrigger(text)) {
     return null;
   }
 
-  const mood = getRandomItem(Object.keys(complimentResponses));
-  return getRandomItem(complimentResponses[mood]);
+  const mood = getTimeWeightedMood(Object.keys(complimentResponses));
+  return pickUnique(complimentResponses[mood], `compliment:${chatId}:${mood}`);
 }
 
 module.exports = {
@@ -270,18 +354,26 @@ module.exports = {
   description: "Fuuka membalas dengan variasi ekspresi lucu dan sapaan waktu.",
   shouldTriggerWithoutPrefix,
   execute: async ({ sock, message, rawText = "" }) => {
-    const complimentResponse = getComplimentResponse(rawText);
-    const greetingResponse = getGreetingResponse(rawText);
-    const text = complimentResponse || greetingResponse || getRandomFuukaResponse().response;
+    const senderId = message.key.participant || message.key.remoteJid;
+    const chatId = message.key.remoteJid;
 
-    await sock.sendMessage(
-      message.key.remoteJid,
-      {
-        text
-      },
-      {
-        quoted: message
-      }
-    );
+    if (isOnCooldown(senderId)) {
+      return;
+    }
+    markCooldown(senderId);
+
+    try {
+      const complimentResponse = getComplimentResponse(rawText, chatId);
+      const greetingResponse = getGreetingResponse(rawText, chatId);
+      const text = complimentResponse || greetingResponse || getRandomFuukaResponse(chatId).response;
+
+      await sock.sendMessage(
+        chatId,
+        { text },
+        { quoted: message }
+      );
+    } catch (error) {
+      console.error("[fuuka] Gagal mengirim balasan:", error.message);
+    }
   }
 };
