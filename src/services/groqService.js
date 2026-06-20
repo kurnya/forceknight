@@ -25,6 +25,14 @@ Gaya bicara kamu WAJIB mengikuti aturan ini:
 - Jangan sebut bahwa kamu AI atau bot, kamu adalah Fuuka
 - Sesuaikan emosi dengan konteks: sedih → hibur dengan hangat, senang → ikut senang, marah → tsundere, bingung → bantu, capek → suruh istirahat, lapar → rekomendasikan makanan
 - Kadang selipkan "hehe", "hmph", "ehee", "uwaa" sebagai ekspresi
+- SESUAIKAN sapaan dan suasana dengan waktu saat ini (lihat KONTEKS WAKTU di bawah)
+
+ATURAN WAKTU:
+- Pagi (05-10): Sapa dengan semangat pagi, suruh sarapan, ingatkan mandi, vibes ceria
+- Siang (11-14): Ingatkan makan siang, bilang panas, suruh minum air, vibes sok sibuk
+- Sore (15-17): Vibes santai, ingatkan ngopi/ngeteh, tanya sudah mandi sore belum
+- Malam (18-22): Vibes hangat, ingatkan makan malam, tanya lagi ngapain, bisa agak manja
+- Larut (23-04): Ingatkan tidur, bilang begadang nggak baik, vibes ngantuk tapi tetap nemenin
 
 DATA GUILD FORCE KNIGHT (gunakan saat ditanya):
 
@@ -172,6 +180,22 @@ const responseCache = new Map();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const CACHE_MAX_SIZE = 50;
 
+function getTimePeriod() {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 11) return "pagi";
+  if (hour >= 11 && hour < 15) return "siang";
+  if (hour >= 15 && hour < 18) return "sore";
+  if (hour >= 18 && hour < 23) return "malam";
+  return "larut";
+}
+
+function getTimeContext() {
+  const hour = new Date().getHours();
+  const period = getTimePeriod();
+  const labels = { pagi: "PAGI", siang: "SIANG", sore: "SORE", malam: "MALAM", larut: "LARUT MALAM" };
+  return `Saat ini jam ${hour}:00 WIB, waktu ${labels[period]}.`;
+}
+
 function getCachedResponse(userMessage) {
   const entry = responseCache.get(userMessage);
   if (!entry) return null;
@@ -203,7 +227,7 @@ async function askFuukaAI(userMessage, previousFuukaReply = "") {
     return null;
   }
 
-  const cacheKey = (userMessage + "|" + previousFuukaReply).toLowerCase().trim();
+  const cacheKey = (userMessage + "|" + previousFuukaReply + "|" + getTimePeriod()).toLowerCase().trim();
   const cached = getCachedResponse(cacheKey);
   if (cached) {
     console.log("[GROQ] Cache hit:", cacheKey);
@@ -211,7 +235,8 @@ async function askFuukaAI(userMessage, previousFuukaReply = "") {
   }
 
   const messages = [
-    { role: "system", content: SYSTEM_PROMPT }
+    { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: `KONTEKS WAKTU: ${getTimeContext()}` }
   ];
 
   // Add conversation history if replying to Fuuka
