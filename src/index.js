@@ -1,3 +1,8 @@
+// Force UV threadpool size to 1 for single-core servers (must be set before any I/O)
+if (!process.env.UV_THREADPOOL_SIZE) {
+  process.env.UV_THREADPOOL_SIZE = "1";
+}
+
 const http = require("http");
 const path = require("path");
 const {
@@ -26,6 +31,7 @@ const AUTH_DIR = path.join(process.cwd(), "auth");
 let isStarting = false;
 let reconnectTimer = null;
 let httpServerStarted = false;
+let activeSocket = null;
 
 function startHttpServer() {
   if (httpServerStarted) {
@@ -150,8 +156,6 @@ async function startBot() {
 
 startHttpServer();
 startTempCleanupScheduler(settings);
-
-let activeSocket = null;
 
 process.on("unhandledRejection", (reason) => {
   console.error("[UNHANDLED REJECTION]", reason);

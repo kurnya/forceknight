@@ -1,10 +1,15 @@
 const settings = require("../config/settings");
 
-function getAllowedGroups() {
-  return settings.allowedGroups
+// Parse once at startup, then cache as a Set for O(1) lookups
+const allowedGroupsSet = new Set(
+  (settings.allowedGroups || "")
     .split(",")
     .map((groupId) => groupId.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+);
+
+function getAllowedGroups() {
+  return [...allowedGroupsSet];
 }
 
 function isAllowedGroup(groupId) {
@@ -12,7 +17,7 @@ function isAllowedGroup(groupId) {
     return false;
   }
 
-  return getAllowedGroups().includes(groupId);
+  return allowedGroupsSet.has(groupId);
 }
 
 module.exports = {

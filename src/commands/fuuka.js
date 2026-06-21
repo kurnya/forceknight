@@ -244,6 +244,42 @@ function pickUnique(items, key) {
 const cooldownMap = new Map();
 const COOLDOWN_MS = 3000;
 
+// ── Periodic cleanup for cooldown and response maps ────────────────────────
+const FUUKA_CLEANUP_INTERVAL_MS = 10 * 60 * 1000; // every 10 minutes
+
+function cleanupFuukaMaps() {
+  const now = Date.now();
+  let cooldownCleaned = 0;
+
+  for (const [key, timestamp] of cooldownMap) {
+    if (now - timestamp > COOLDOWN_MS) {
+      cooldownMap.delete(key);
+      cooldownCleaned++;
+    }
+  }
+
+  // lastResponseMap only needs to keep recent entries; clear all older than 30 min
+  if (lastResponseMap.size > 100) {
+    const keysToDelete = [];
+    let count = 0;
+    for (const key of lastResponseMap.keys()) {
+      if (count >= 50) break;
+      keysToDelete.push(key);
+      count++;
+    }
+    for (const key of keysToDelete) {
+      lastResponseMap.delete(key);
+    }
+  }
+
+  if (cooldownCleaned > 0) {
+    console.log(`[FUUKA CLEANUP] Cleaned ${cooldownCleaned} cooldown entries`);
+  }
+}
+
+const fuukaCleanupTimer = setInterval(cleanupFuukaMaps, FUUKA_CLEANUP_INTERVAL_MS);
+fuukaCleanupTimer.unref?.();
+
 function isOnCooldown(userId) {
   const last = cooldownMap.get(userId);
   if (!last) return false;
@@ -255,8 +291,13 @@ function markCooldown(userId) {
 }
 
 // ── Time-aware mood selection ──────────────────────────────────────────────
+function getWibHour() {
+  // WIB = UTC+7
+  return (new Date().getUTCHours() + 7) % 24;
+}
+
 function getTimeWeightedMood(moods) {
-  const hour = new Date().getHours();
+  const hour = getWibHour();
   const weights = {};
 
   for (const mood of moods) {

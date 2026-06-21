@@ -29,7 +29,7 @@ function parseGroupCommandRules(value) {
 }
 
 function parseEnabledCommands(value) {
-  return (value || "fuuka,stiker,gambar,gif,video,audio,intro")
+  return (value || "fuuka,stiker,gambar,audio,intro")
     .split(",")
     .map((command) => command.trim().toLowerCase())
     .filter(Boolean);
@@ -69,7 +69,6 @@ const settings = {
   audioMaxSeconds: parsePositiveNumber(process.env.AUDIO_MAX_SECONDS, 10 * 60),
   audioMaxDownloadSize: process.env.AUDIO_MAX_DOWNLOAD_SIZE || "15M",
   audioBitrate: process.env.AUDIO_BITRATE || "96K",
-  audioConcurrentJobs: Math.floor(parsePositiveNumber(process.env.AUDIO_CONCURRENT_JOBS, 1)),
   mediaMaxConcurrent: Math.floor(parsePositiveNumber(process.env.MEDIA_MAX_CONCURRENT, 1)),
   mediaQueueLimit: Math.floor(parsePositiveNumber(process.env.MEDIA_QUEUE_LIMIT, 5)),
   ffmpegTimeoutMs: parsePositiveNumber(process.env.FFMPEG_TIMEOUT_MS, 120000),

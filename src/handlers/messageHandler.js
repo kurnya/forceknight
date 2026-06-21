@@ -3,15 +3,13 @@ const { isAllowedGroup } = require("../utils/groupValidator");
 const { extractMessageText, getMentionedJids, getQuotedMessageContext } = require("../utils/messageParser");
 const stiker = require("../commands/stiker");
 const gambar = require("../commands/gambar");
-const gif = require("../commands/gif");
-const video = require("../commands/video");
 const audio = require("../commands/audio");
 const fuuka = require("../commands/fuuka");
 const help = require("../commands/help");
 const intro = require("../commands/intro");
 const menu = require("../commands/menu");
 
-const registeredCommands = [stiker, gambar, gif, video, audio, fuuka, help, intro, menu];
+const registeredCommands = [stiker, gambar, audio, fuuka, help, intro, menu];
 const commands = new Map(registeredCommands.map((command) => [command.name, command]));
 
 for (const command of registeredCommands) {
@@ -33,7 +31,6 @@ async function handleMessage(sock, message) {
       return;
     }
 
-    console.log("Group:", remoteJid);
     console.log("[MESSAGE] Pesan masuk dari grup:", remoteJid);
 
     if (!isAllowedGroup(remoteJid)) {

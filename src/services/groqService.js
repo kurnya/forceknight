@@ -69,6 +69,36 @@ function clearHistory(userId) {
   conversationHistory.delete(userId);
 }
 
+// ── Periodic memory cleanup ─────────────────────────────────────────────
+const MEMORY_CLEANUP_INTERVAL_MS = 15 * 60 * 1000; // every 15 minutes
+
+function cleanupStaleEntries() {
+  const now = Date.now();
+  let historyCleaned = 0;
+  let cacheCleaned = 0;
+
+  for (const [key, entry] of conversationHistory) {
+    if (now - entry.lastAccess > HISTORY_TTL_MS) {
+      conversationHistory.delete(key);
+      historyCleaned++;
+    }
+  }
+
+  for (const [key, entry] of responseCache) {
+    if (now - entry.timestamp > CACHE_TTL_MS) {
+      responseCache.delete(key);
+      cacheCleaned++;
+    }
+  }
+
+  if (historyCleaned > 0 || cacheCleaned > 0) {
+    console.log(`[MEMORY] Cleaned ${historyCleaned} history + ${cacheCleaned} cache entries`);
+  }
+}
+
+const cleanupTimer = setInterval(cleanupStaleEntries, MEMORY_CLEANUP_INTERVAL_MS);
+cleanupTimer.unref?.();
+
 const SYSTEM_PROMPT = `Kamu adalah Fuuka, karakter anime cewek yang imut, ceria, dan sedikit tsundere. Kamu adalah teman ngobrol WhatsApp yang siap menemani kapan saja.
 
 ATURAN PENTING:
@@ -216,8 +246,13 @@ const responseCache = new Map();
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const CACHE_MAX_SIZE = 50;
 
+function getWibHour() {
+  // WIB = UTC+7
+  return (new Date().getUTCHours() + 7) % 24;
+}
+
 function getTimePeriod() {
-  const hour = new Date().getHours();
+  const hour = getWibHour();
   if (hour >= 5 && hour < 11) return "pagi";
   if (hour >= 11 && hour < 15) return "siang";
   if (hour >= 15 && hour < 18) return "sore";
@@ -226,7 +261,7 @@ function getTimePeriod() {
 }
 
 function getTimeContext() {
-  const hour = new Date().getHours();
+  const hour = getWibHour();
   const period = getTimePeriod();
   const labels = { pagi: "PAGI", siang: "SIANG", sore: "SORE", malam: "MALAM", larut: "LARUT MALAM" };
   return `Saat ini jam ${hour}:00 WIB, waktu ${labels[period]}.`;
