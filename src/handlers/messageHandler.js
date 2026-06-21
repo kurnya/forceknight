@@ -1,6 +1,6 @@
 const settings = require("../config/settings");
 const { isAllowedGroup } = require("../utils/groupValidator");
-const { extractMessageText, getMentionedJids, getQuotedMessageContext } = require("../utils/messageParser");
+const { extractMessageText, getMentionedJids } = require("../utils/messageParser");
 const stiker = require("../commands/stiker");
 const gambar = require("../commands/gambar");
 const audio = require("../commands/audio");
@@ -18,9 +18,43 @@ for (const command of registeredCommands) {
   }
 }
 
+function normalizeJidUser(value) {
+  return String(value || "")
+    .split(/[:@]/)[0]
+    .replace(/\D/g, "");
+}
+
+function getBotIdentityNumbers(sock) {
+  return new Set(
+    [
+      normalizeJidUser(sock?.user?.id),
+      normalizeJidUser(sock?.user?.lid),
+      normalizeJidUser(settings.botNumber)
+    ].filter(Boolean)
+  );
+}
+
+function isOwnMessage(sock, message) {
+  if (!message || message.key?.fromMe) {
+    return true;
+  }
+
+  const botIdentityNumbers = getBotIdentityNumbers(sock);
+  if (!botIdentityNumbers.size) {
+    return false;
+  }
+
+  const remoteJid = message.key?.remoteJid || "";
+  const isGroupMessage = typeof remoteJid === "string" && remoteJid.endsWith("@g.us");
+  const senderJid = isGroupMessage ? message.key?.participant : remoteJid;
+  const senderNumber = normalizeJidUser(senderJid);
+
+  return Boolean(senderNumber && botIdentityNumbers.has(senderNumber));
+}
+
 async function handleMessage(sock, message) {
   try {
-    if (!message || message.key?.fromMe) {
+    if (isOwnMessage(sock, message)) {
       return;
     }
 
@@ -48,38 +82,20 @@ async function handleMessage(sock, message) {
     const normalizedMessageText = messageText.toLowerCase();
     const plainCommandName = normalizedMessageText.split(/\s+/)[0];
     const mentionedJids = getMentionedJids(message);
-    const botJid = sock.user?.id || "";
-    const botLid = sock.user?.lid || "";
-    // Extract just the number part (before : or @) for comparison
-    const botJidNum = botJid.split(/[:@]/)[0];
-    const botLidNum = botLid.split(/[:@]/)[0];
+    const botIdentityNumbers = getBotIdentityNumbers(sock);
     const isBotMentioned = mentionedJids.length > 0 && mentionedJids.some((jid) => {
-      const jidNum = jid.split(/[:@]/)[0];
-      return jidNum === botJidNum || jidNum === botLidNum;
+      const jidNum = normalizeJidUser(jid);
+      return jidNum && botIdentityNumbers.has(jidNum);
     });
-
-    // Check if replying to a Fuuka message
-    const quotedCtx = getQuotedMessageContext(message);
-    const quotedParticipant = quotedCtx?.participant || "";
-    const quotedPartNum = quotedParticipant.split(/[:@]/)[0];
-    const isReplyToBot = quotedParticipant && (quotedPartNum === botJidNum || quotedPartNum === botLidNum);
-    // Get quoted message text for conversation context
-    let quotedText = "";
-    if (isReplyToBot && quotedCtx?.quotedMessage) {
-      const qMsg = quotedCtx.quotedMessage;
-      quotedText = (qMsg.conversation || qMsg.extendedTextMessage?.text || "").trim();
-    }
+    const isReplyToBot = false;
+    const quotedText = "";
 
     if (mentionedJids.length > 0) {
       console.log("[DEBUG] mentionedJids:", mentionedJids);
-      console.log("[DEBUG] botJidNum:", botJidNum, "| botLidNum:", botLidNum);
+      console.log("[DEBUG] botIdentityNumbers:", [...botIdentityNumbers]);
       console.log("[DEBUG] isBotMentioned:", isBotMentioned);
     }
-    if (isReplyToBot) {
-      console.log("[DEBUG] Reply to bot detected | quotedText:", quotedText.substring(0, 80));
-    }
-
-    const isFuukaWithoutPrefix = fuuka.shouldTriggerWithoutPrefix(normalizedMessageText) || isBotMentioned || isReplyToBot;
+    const isFuukaWithoutPrefix = fuuka.shouldTriggerWithoutPrefix(normalizedMessageText) || isBotMentioned;
     const isFuukaWithHashPrefix = plainCommandName === `#${fuuka.name}`;
     const isIntroWithoutPrefix = plainCommandName === intro.name;
     const isHelpWithoutPrefix = normalizedMessageText === help.name;
@@ -145,5 +161,7 @@ async function handleMessage(sock, message) {
 }
 
 module.exports = {
-  handleMessage
+  handleMessage,
+  isOwnMessage,
+  normalizeJidUser
 };
