@@ -378,12 +378,12 @@ module.exports = {
       } else if (isBotMentioned) {
         // Bot was @mentioned but no local pattern matched → call AI
         const cleanedMessage = rawText.replace(/@\d+/g, "").trim();
-        const aiResponse = await askFuukaAI(cleanedMessage || "halo");
+        const aiResponse = await askFuukaAI(cleanedMessage || "halo", "", senderId);
         text = aiResponse || getRandomFuukaResponse(chatId).response;
         console.log(`[FUUKA AI] ${aiResponse ? "AI response" : "Fallback to local"} for: ${cleanedMessage}`);
       } else if (isReplyToBot) {
         // User replied to Fuuka's message → continue conversation with AI
-        const aiResponse = await askFuukaAI(rawText, quotedText);
+        const aiResponse = await askFuukaAI(rawText, quotedText, senderId);
         text = aiResponse || getRandomFuukaResponse(chatId).response;
         console.log(`[FUUKA AI] ${aiResponse ? "Reply conversation" : "Fallback to local"} | context: ${quotedText.substring(0, 50)}`);
       } else {

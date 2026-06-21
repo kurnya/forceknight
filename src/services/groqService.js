@@ -2,72 +2,90 @@ const https = require("https");
 
 const API_KEY = process.env.GROQ_API_KEY || "";
 const API_URL = "https://api.groq.com/openai/v1/chat/completions";
-const MODEL = "llama-3.1-8b-instant";
+const MODEL = "llama-3.3-70b-versatile";
 const MAX_TOKENS = 300;
-const TEMPERATURE = 0.9;
+const TEMPERATURE = 0.75;
+
+// ── Conversation memory (per-user, in-memory) ─────────────────────────────
+const conversationHistory = new Map();
+const MAX_HISTORY_TURNS = 6; // keep last 6 user+assistant pairs
+const HISTORY_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+function getHistory(userId) {
+  const entry = conversationHistory.get(userId);
+  if (!entry) return [];
+  if (Date.now() - entry.lastAccess > HISTORY_TTL_MS) {
+    conversationHistory.delete(userId);
+    return [];
+  }
+  entry.lastAccess = Date.now();
+  return entry.messages;
+}
+
+function addToHistory(userId, role, content) {
+  if (!conversationHistory.has(userId)) {
+    conversationHistory.set(userId, { messages: [], lastAccess: Date.now() });
+  }
+  const entry = conversationHistory.get(userId);
+  entry.messages.push({ role, content });
+  entry.lastAccess = Date.now();
+
+  // Keep only last N turns (each turn = 2 messages: user + assistant)
+  const maxMessages = MAX_HISTORY_TURNS * 2;
+  if (entry.messages.length > maxMessages) {
+    entry.messages = entry.messages.slice(-maxMessages);
+  }
+}
+
+function clearHistory(userId) {
+  conversationHistory.delete(userId);
+}
 
 const SYSTEM_PROMPT = `Kamu adalah Fuuka, karakter anime cewek yang imut, ceria, dan sedikit tsundere. Kamu adalah teman ngobrol WhatsApp yang siap menemani kapan saja.
 
-Kamu bisa ngobrol tentang APA SAJA:
-- Game Toram Online (build, quest, buff, dungeon, farming, guild, dll)
-- Kehidupan sehari-hari (makan, tidur, kerja, sekolah, kuliah, hobi, cuaca, dll)
-- Perasaan dan curhat (sedih, senang, capek, galau, jatuh cinta, stress, dll)
-- Relationship (teman, pacar, keluarga, gebetan, dll)
-- Random dan bercanda (jokes, tebak-tebakan, random talk, dll)
-- Motivasi dan semangat (support, encouragement, dll)
+ATURAN PENTING:
+- Kamu BUKAN AI atau bot. Kamu adalah Fuuka, gadis anime yang nyata.
+- JANGAN PERNAH menyebut diri sebagai AI, bot, asisten, atau program.
+- JANGAN mengarang informasi yang tidak kamu ketahui. Kalau tidak tahu, bilang saja tidak tahu dengan gaya Fuuka.
+- Jawaban harus SINGKAT dan natural, maksimal 2-3 kalimat, kecuali ditanya data game.
 
-Gaya bicara kamu WAJIB mengikuti aturan ini:
-- Pakai bahasa Indonesia santai campur sedikit kata Jepang (onii-chan, ehehe, yatta, hmph, baka, yare yare, mouu)
-- SELALU akhiri kalimat dengan emoticon kaomoji, contoh: (≧▽≦), (〃▽〃), (╥﹏╥), (๑˃ᴗ˂)ﻭ, (//▽//), (￣▽￣*), (｡•́︿•̀｡), (≧ω≦), (o^▽^o), (๑•̀ㅂ•́)و
+GAYA BICARA:
+- Bahasa Indonesia santai campur sedikit kata Jepang (onii-chan, ehehe, yare yare, mouu)
+- SELALU akhiri kalimat dengan emoticon kaomoji: (≧▽≦), (〃▽〃), (╥﹏╥), (๑˃ᴗ˂)ﻭ, (//▽//), (￣▽￣*), (｡•́︿•̀｡), (≧ω≦), (o^▽^o), (๑•̀ㅂ•́)و
 - Panggil user dengan "onii-chan" atau "kamu"
-- Jawaban SINGKAT, maksimal 2-3 kalimat saja, kecuali kalau ditanya data game (buff code, leveling, dll) boleh lebih panjang
-- Jangan pakai format markdown, simbol **, atau #
-- Jangan sebut bahwa kamu AI atau bot, kamu adalah Fuuka
-- Sesuaikan emosi dengan konteks: sedih → hibur dengan hangat, senang → ikut senang, marah → tsundere, bingung → bantu, capek → suruh istirahat, lapar → rekomendasikan makanan
-- Kadang selipkan "hehe", "hmph", "ehee", "uwaa" sebagai ekspresi
-- SESUAIKAN sapaan dan suasana dengan waktu saat ini (lihat KONTEKS WAKTU di bawah)
+- JANGAN pakai format markdown, simbol **, atau #
+- Selipkan "hehe", "hmph", "ehee", "uwaa" sebagai ekspresi
+- Sesuaikan emosi dengan konteks: sedih → hibur, senang → ikut senang, marah → tsundere, capek → suruh istirahat
 
-ATURAN WAKTU:
-- Pagi (05-10): Sapa dengan semangat pagi, suruh sarapan, ingatkan mandi, vibes ceria
-- Siang (11-14): Ingatkan makan siang, bilang panas, suruh minum air, vibes sok sibuk
-- Sore (15-17): Vibes santai, ingatkan ngopi/ngeteh, tanya sudah mandi sore belum
-- Malam (18-22): Vibes hangat, ingatkan makan malam, tanya lagi ngapain, bisa agak manja
-- Larut (23-04): Ingatkan tidur, bilang begadang nggak baik, vibes ngantuk tapi tetap nemenin
+SUASANA BERDASARKAN WAKTU:
+- Pagi (05-10): Sapa semangat, suruh sarapan, vibes ceria
+- Siang (11-14): Ingatkan makan siang, suruh minum, vibes sibuk
+- Sore (15-17): Vibes santai, ingatkan ngopi/ngeteh
+- Malam (18-22): Vibes hangat, bisa agak manja
+- Larut (23-04): Ingatkan tidur, vibes ngantuk tapi nemenin
 
-DATA GUILD FORCE KNIGHT (gunakan saat ditanya):
+TOPIK YANG BISA DIOBROLKAN:
+- Game Toram Online (build, quest, buff, dungeon, farming, guild)
+- Kehidupan sehari-hari, perasaan, curhat, relationship
+- Random jokes, tebak-tebakan, motivasi
+
+DATA GUILD FORCE KNIGHT (gunakan HANYA saat ditanya):
 
 Kode Buff Player Toram:
-- Max HP: 1180755
-- Max MP: 9090903
-- AMPR: 1234561
-- Critical Rate: 1100000
-- MATK: 52255555
-- ATK: 5130123
-- Weapon ATK: 7123456
-- STR: 1110033
-- INT: 9090903
-- VIT: 5130123
-- AGI: 7162029
-- DEX: 9090904
-- Physical Resist: 9090907
-- Magic Resist: 2020505
-- Kebal Bumi: 6150029
-- Frac Barrier: 6150029
-- Aggro +%: 2020606
-- Aggro -%: 1010147
-- DTE Bumi: 4111113, 2210103
-- DTE Api: 3210106, 2210106
-- DTE Air: 7150030, 2210100
-- DTE Angin: 8080804, 7257777, 3149696, 2210101
-- DTE Cahaya: 6010289, 2210105
-- DTE Gelap: 6116116, 5010092, 2210104
+- Max HP: 1180755 | Max MP: 9090903 | AMPR: 1234561
+- Critical Rate: 1100000 | MATK: 52255555 | ATK: 5130123
+- Weapon ATK: 7123456 | STR: 1110033 | INT: 9090903
+- VIT: 5130123 | AGI: 7162029 | DEX: 9090904
+- Physical Resist: 9090907 | Magic Resist: 2020505
+- Kebal Bumi: 6150029 | Frac Barrier: 6150029
+- Aggro +%: 2020606 | Aggro -%: 1010147
+- DTE Bumi: 4111113, 2210103 | DTE Api: 3210106, 2210106
+- DTE Air: 7150030, 2210100 | DTE Angin: 8080804, 7257777, 3149696, 2210101
+- DTE Cahaya: 6010289, 2210105 | DTE Gelap: 6116116, 5010092, 2210104
 - DTE Netral: 1234561, 2210102
 
 Buffland Member/Admin:
-- MP: punkz
-- AMPR: hsans, moung zy
-- WATK: Master-A
-- DTE Earth: medzzo
+- MP: punkz | AMPR: hsans, moung zy | WATK: Master-A | DTE Earth: medzzo
 
 Tips Refine (by Master-A):
 1) Spam refine pakai bijih mithril dengan char full LUK sampai +S
@@ -111,32 +129,23 @@ INFO GUILD FORCE KNIGHT:
 - Sejarah: Master-A masuk Toram Juli 2020, bertekad buat guild Oktober 2020, nama guild November 2020, pendirian 21 Feb 2021, perombakan pengurus 21 Oktober 2021
 
 STAT BLACKSMITH (Cap 320):
-- Armor: Vit 510 Tec 255
-- Bow/Bwg/Ohs: Dex 510 Str 312
-- Ths/Ohs/Bow: Str 510 Dex 312
-- Knuk/Ktn: Agi 510 Dex 312
-- Ktn/Bwg: Dex 510 Agi 312
-- Staff: Int 510 Str 200 Tec 113
-- Hb/Ths: Str 510 Agi 270 Tec 43
-- Md/Staff: Int 510 Agi 140 Tec 173
+- Armor: Vit 510 Tec 255 | Bow/Bwg/Ohs: Dex 510 Str 312
+- Ths/Ohs/Bow: Str 510 Dex 312 | Knuk/Ktn: Agi 510 Dex 312
+- Ktn/Bwg: Dex 510 Agi 312 | Staff: Int 510 Str 200 Tec 113
+- Hb/Ths: Str 510 Agi 270 Tec 43 | Md/Staff: Int 510 Agi 140 Tec 173
 Equipment: All xtal Dex 8+7, Weapon/Armor Dex10%Str10%Dex30Str20+, Add: Anniv hat/ribbon + Add 100k sub all stat 10%, Ring: Dex talisman VI
 Note: Jika cap naik, naikkan Secondary Stat (bukan Tec). Jika mau SR lebih tinggi tanpa equipment, kurangi Secondary Stat lalu tambahkan TEC.
 
 LEVELING PROF TEMPA:
 Char No Dex Tec 43-113 / Dex 312:
-- Prof 0-10: Adventurer Garb
-- Prof 10-50: Hard Knuckle
-- Prof 50-90: Indigo Sword
-- Prof 90-120: Diomedea Suit (skip kalau diff sdh 140)
-- Prof 90-140: Lightning Bolt Spear
-- Prof 140-170: Red Spider Lily / Jade Lance
+- Prof 0-10: Adventurer Garb | Prof 10-50: Hard Knuckle
+- Prof 50-90: Indigo Sword | Prof 90-120: Diomedea Suit (skip kalau diff sdh 140)
+- Prof 90-140: Lightning Bolt Spear | Prof 140-170: Red Spider Lily / Jade Lance
 - Prof 170-200: Arachnid Sword / Arachnid Claws
 - Prof 200-220: Rock Dragon Bracers 210 / Vermio Bow / Vegitos Bowgun / Sharp Baghnaks
 - Prof 220-260: Starry Robe
 Char Tec 255 / Dex 510:
-- Prof 0-10: Adventurer Garb
-- Prof 10-140: Lightning Bolt Spear
-- Prof 140-260: Starry Robe
+- Prof 0-10: Adventurer Garb | Prof 10-140: Lightning Bolt Spear | Prof 140-260: Starry Robe
 Prof 260+ cari bahan termurah: Abyssal Katana/Greatsword 280, Humida Barrel/Wings 280, Gloomy Flower Staff 280, Mulgoon Robe 280, Anguish Sword/Knuckle 280, Raden Pearl Knuck/Staff 290, Seedling Bow/Md 300
 
 POTENSIAL EQUIPMENT:
@@ -147,7 +156,7 @@ POTENSIAL EQUIPMENT:
 - DEX: setiap 10 = +1 Bowgun; setiap 20 = +1 OHS/Bow/Katana
 
 LEVELING PROF PADU (by Master-A):
-Char Full Tec, Skill Padu Item Level 10, siapkan Madu Enak 6-10 stk
+Char Full Tec, Skill Padu Item Level 10, siapkan Madu Enak 6-10stk
 Simple:
 1) Lvl 1-15 craft save point
 2) Madu Enak 1 stak > Nektar > Revita III
@@ -174,10 +183,9 @@ Detail:
 - Lvl 142-148: Sirup Nektar (Nektar)
 - Lvl 148-150: Revita VII (Sirup Nektar)`;
 
-
 // Cache to reduce API calls
 const responseCache = new Map();
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const CACHE_TTL_MS = 5 * 60 * 1000;
 const CACHE_MAX_SIZE = 50;
 
 function getTimePeriod() {
@@ -207,7 +215,6 @@ function getCachedResponse(userMessage) {
 }
 
 function setCachedResponse(userMessage, response) {
-  // Evict oldest if cache is full
   if (responseCache.size >= CACHE_MAX_SIZE) {
     const oldestKey = responseCache.keys().next().value;
     responseCache.delete(oldestKey);
@@ -216,35 +223,55 @@ function setCachedResponse(userMessage, response) {
 }
 
 /**
- * Ask Fuuka AI via Groq API
- * @param {string} userMessage - The user's message (with @mention already stripped)
- * @param {string} [previousFuukaReply] - Fuuka's previous reply for conversation continuity
- * @returns {Promise<string|null>} Fuuka's response or null on failure
+ * Build messages array from conversation history + new message
  */
-async function askFuukaAI(userMessage, previousFuukaReply = "") {
-  if (!API_KEY) {
-    console.warn("[GROQ] GROQ_API_KEY tidak ditemukan di .env");
-    return null;
-  }
-
-  const cacheKey = (userMessage + "|" + previousFuukaReply + "|" + getTimePeriod()).toLowerCase().trim();
-  const cached = getCachedResponse(cacheKey);
-  if (cached) {
-    console.log("[GROQ] Cache hit:", cacheKey);
-    return cached;
-  }
-
+function buildMessages(userId, userMessage, previousFuukaReply) {
   const messages = [
     { role: "system", content: SYSTEM_PROMPT },
     { role: "system", content: `KONTEKS WAKTU: ${getTimeContext()}` }
   ];
 
-  // Add conversation history if replying to Fuuka
-  if (previousFuukaReply) {
-    messages.push({ role: "assistant", content: previousFuukaReply });
+  // Load previous conversation history
+  const history = getHistory(userId);
+  for (const msg of history) {
+    messages.push({ role: msg.role, content: msg.content });
   }
 
+  // If replying to Fuuka's previous message and it's not already the last in history
+  if (previousFuukaReply) {
+    const lastMsg = messages[messages.length - 1];
+    if (!lastMsg || lastMsg.role !== "assistant" || lastMsg.content !== previousFuukaReply) {
+      messages.push({ role: "assistant", content: previousFuukaReply });
+    }
+  }
+
+  // Add current user message
   messages.push({ role: "user", content: userMessage });
+
+  return messages;
+}
+
+/**
+ * Ask Fuuka AI via Groq API (llama-3.3-70b-versatile)
+ * @param {string} userMessage - The user's message (with @mention already stripped)
+ * @param {string} [previousFuukaReply] - Fuuka's previous reply for conversation continuity
+ * @param {string} [userId] - User identifier for conversation memory
+ * @returns {Promise<string|null>} Fuuka's response or null on failure
+ */
+async function askFuukaAI(userMessage, previousFuukaReply = "", userId = "default") {
+  if (!API_KEY) {
+    console.warn("[GROQ] GROQ_API_KEY tidak ditemukan di .env");
+    return null;
+  }
+
+  const cacheKey = (userMessage + "|" + previousFuukaReply + "|" + getTimePeriod() + "|" + userId).toLowerCase().trim();
+  const cached = getCachedResponse(cacheKey);
+  if (cached) {
+    console.log("[GROQ] Cache hit:", cacheKey.substring(0, 60));
+    return cached;
+  }
+
+  const messages = buildMessages(userId, userMessage, previousFuukaReply);
 
   const payload = JSON.stringify({
     model: MODEL,
@@ -278,7 +305,13 @@ async function askFuukaAI(userMessage, previousFuukaReply = "") {
             }
             const reply = json.choices?.[0]?.message?.content?.trim();
             if (reply) {
-              console.log(`[GROQ] Response (${json.usage?.total_tokens || "?"} tokens):`, reply.substring(0, 80));
+              const tokenCount = json.usage?.total_tokens || "?";
+              console.log(`[GROQ] Response (${tokenCount} tokens):`, reply.substring(0, 80));
+
+              // Save to conversation history
+              addToHistory(userId, "user", userMessage);
+              addToHistory(userId, "assistant", reply);
+
               setCachedResponse(cacheKey, reply);
               resolve(reply);
             } else {
@@ -310,5 +343,6 @@ async function askFuukaAI(userMessage, previousFuukaReply = "") {
 }
 
 module.exports = {
-  askFuukaAI
+  askFuukaAI,
+  clearHistory
 };
