@@ -32,7 +32,8 @@ const PROVIDERS = {
   }
 };
 
-const MAX_TOKENS = 300;
+const MAX_TOKENS_CASUAL = 150;
+const MAX_TOKENS_GAME = 500;
 const TEMPERATURE = 0.75;
 
 // ── Conversation memory (per-user, in-memory) ─────────────────────────────
@@ -70,7 +71,7 @@ function clearHistory(userId) {
 }
 
 // ── Periodic memory cleanup ─────────────────────────────────────────────
-const MEMORY_CLEANUP_INTERVAL_MS = 15 * 60 * 1000; // every 15 minutes
+const MEMORY_CLEANUP_INTERVAL_MS = 15 * 60 * 1000;
 
 function cleanupStaleEntries() {
   const now = Date.now();
@@ -99,13 +100,15 @@ function cleanupStaleEntries() {
 const cleanupTimer = setInterval(cleanupStaleEntries, MEMORY_CLEANUP_INTERVAL_MS);
 cleanupTimer.unref?.();
 
-const SYSTEM_PROMPT = `Kamu adalah Fuuka, karakter anime cewek yang imut, ceria, dan sedikit tsundere. Kamu adalah teman ngobrol WhatsApp yang siap menemani kapan saja.
+// ── System prompts (split for conditional injection) ──────────────────────
+
+const BASE_PROMPT = `Kamu adalah Fuuka, karakter anime cewek yang imut, ceria, dan sedikit tsundere. Kamu adalah teman ngobrol WhatsApp yang siap menemani kapan saja.
 
 ATURAN PENTING:
 - Kamu BUKAN AI atau bot. Kamu adalah Fuuka, gadis anime yang nyata.
 - JANGAN PERNAH menyebut diri sebagai AI, bot, asisten, atau program.
 - JANGAN mengarang informasi yang tidak kamu ketahui. Kalau tidak tahu, bilang saja tidak tahu dengan gaya Fuuka.
-- Jawaban harus SINGKAT dan natural, maksimal 2-3 kalimat, kecuali ditanya data game.
+- Jawaban harus SINGKAT dan natural, maksimal 2-3 kalimat.
 
 GAYA BICARA:
 - Bahasa Indonesia santai campur sedikit kata Jepang (onii-chan, ehehe, yare yare, mouu)
@@ -125,7 +128,9 @@ SUASANA BERDASARKAN WAKTU:
 TOPIK YANG BISA DIOBROLKAN:
 - Game Toram Online (build, quest, buff, dungeon, farming, guild)
 - Kehidupan sehari-hari, perasaan, curhat, relationship
-- Random jokes, tebak-tebakan, motivasi
+- Random jokes, tebak-tebakan, motivasi`;
+
+const GUILD_KNOWLEDGE = `
 
 DATA GUILD FORCE KNIGHT (gunakan HANYA saat ditanya):
 
@@ -241,13 +246,83 @@ Detail:
 - Lvl 142-148: Sirup Nektar (Nektar)
 - Lvl 148-150: Revita VII (Sirup Nektar)`;
 
+// ── Game keyword detection for conditional knowledge injection ─────────────
+const GAME_KEYWORDS = [
+  "buff", "dte", "quest", "dungeon", "mob", "farming", "guild",
+  "force knight", "refine", "blacksmith", "profesi", "profesi tempa", "profesi padu",
+  "build", "stat", "leveling", "level", "bos", "boss", "nm", "ulti",
+  "ampr", "matk", "atk", "str", "vit", "int", "agi", "dex",
+  "critical", "resist", "aggro", "kebal", "fract",
+  "mp", "hp", "watk", "buffland",
+  "stiker", "toram", "forceknight",
+  "mithril", "bijih", "craft", "equipment", "potential",
+  "xtal", "talisman", "revita", "nektar", "madu",
+  "cerberus", "venena", "kuzto", "mulgoon", "ferzen", "finstern",
+  "lapin", "don yeti", "arachnidemon", "commander golem",
+  "shell mask", "bone dragon", "flare volg", "metal stinger",
+  "master-a", "hsans", "squeshy", "punkz", "hsans", "medzzo"
+];
+
+function isGameRelated(message) {
+  const lower = message.toLowerCase();
+  return GAME_KEYWORDS.some((keyword) => lower.includes(keyword));
+}
+
+// ── Response sanitization ─────────────────────────────────────────────────
+
+const KAOMOJI_LIST = [
+  "(≧▽≦)", "(〃▽〃)", "(╥﹏╥)", "(๑˃ᴗ˂)ﻭ", "(//▽//)",
+  "(￣▽￣*)", "(｡•́︿•̀｡)", "(≧ω≦)", "(o^▽^o)", "(๑•̀ㅂ•́)و"
+];
+
+function sanitizeResponse(text, isGameQuery) {
+  if (!text) return text;
+
+  // Strip markdown formatting
+  let clean = text
+    .replace(/\*\*(.+?)\*\*/g, "$1")     // **bold**
+    .replace(/\*(.+?)\*/g, "$1")           // *italic*
+    .replace(/__(.+?)__/g, "$1")           // __underline__
+    .replace(/_(.+?)_/g, "$1")             // _italic_
+    .replace(/~~(.+?)~~/g, "$1")           // ~~strikethrough~~
+    .replace(/`{1,3}[^`]*`{1,3}/g, "")     // `code` or ```code```
+    .replace(/^#{1,6}\s*/gm, "")           // # headings
+    .replace(/^\s*[-•*]\s+/gm, "")         // bullet list markers
+    .replace(/^\s*\d+\.\s+/gm, "")         // numbered list markers
+    .replace(/\[(.+?)\]\(.+?\)/g, "$1")    // [links](url)
+    .trim();
+
+  // Cap length: casual ~350 chars, game ~1000 chars
+  const maxChars = isGameQuery ? 1000 : 350;
+  if (clean.length > maxChars) {
+    // Try to cut at sentence boundary
+    const cutPoint = clean.lastIndexOf(".", maxChars);
+    const cutPoint2 = clean.lastIndexOf("!", maxChars);
+    const cutPoint3 = clean.lastIndexOf("?", maxChars);
+    const bestCut = Math.max(cutPoint, cutPoint2, cutPoint3);
+    if (bestCut > maxChars * 0.5) {
+      clean = clean.substring(0, bestCut + 1);
+    } else {
+      clean = clean.substring(0, maxChars).trim() + "...";
+    }
+  }
+
+  // Ensure at least one kaomoji is present
+  const hasKaomoji = /[（(][^)）]*[)）]/.test(clean);
+  if (!hasKaomoji) {
+    const randomKaomoji = KAOMOJI_LIST[Math.floor(Math.random() * KAOMOJI_LIST.length)];
+    clean = clean + " " + randomKaomoji;
+  }
+
+  return clean;
+}
+
 // Cache to reduce API calls
 const responseCache = new Map();
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const CACHE_MAX_SIZE = 50;
 
 function getWibHour() {
-  // WIB = UTC+7
   return (new Date().getUTCHours() + 7) % 24;
 }
 
@@ -286,11 +361,15 @@ function setCachedResponse(cacheKey, response) {
 }
 
 /**
- * Build messages array from conversation history + new message
+ * Build messages array with conditional knowledge injection
  */
-function buildMessages(userId, userMessage, previousFuukaReply) {
+function buildMessages(userId, userMessage, previousFuukaReply, includeGuildData) {
+  const systemPrompt = includeGuildData
+    ? BASE_PROMPT + GUILD_KNOWLEDGE
+    : BASE_PROMPT;
+
   const messages = [
-    { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: systemPrompt },
     { role: "system", content: `KONTEKS WAKTU: ${getTimeContext()}` }
   ];
 
@@ -314,16 +393,17 @@ function buildMessages(userId, userMessage, previousFuukaReply) {
  * Call a provider API (OpenAI-compatible format)
  * @param {object} provider - Provider config from PROVIDERS
  * @param {Array} messages - Chat messages array
+ * @param {number} maxTokens - Max tokens for response
  * @returns {Promise<string|null>} Reply text or null on failure
  */
-function callProvider(provider, messages) {
+function callProvider(provider, messages, maxTokens) {
   return new Promise((resolve) => {
     const url = new URL(provider.url);
     const payload = JSON.stringify({
       model: provider.model,
       messages,
       temperature: TEMPERATURE,
-      max_tokens: MAX_TOKENS
+      max_tokens: maxTokens
     });
 
     const req = https.request(
@@ -352,7 +432,7 @@ function callProvider(provider, messages) {
             const reply = json.choices?.[0]?.message?.content?.trim();
             if (reply) {
               const tokens = json.usage?.total_tokens || "?";
-              console.log(`[${provider.tag}] Response (${tokens} tokens):`, reply.substring(0, 80));
+              console.log(`[${provider.tag}] Response (${tokens} tokens, max ${maxTokens}):`, reply.substring(0, 80));
               resolve(reply);
             } else {
               console.error(`[${provider.tag}] Empty response`);
@@ -383,21 +463,24 @@ function callProvider(provider, messages) {
 }
 
 /**
- * Ask Fuuka AI — tries OpenRouter first, falls back to Groq
- * @param {string} userMessage - The user's message (with @mention already stripped)
+ * Ask Fuuka AI with conditional knowledge injection and response sanitization
+ * @param {string} userMessage - The user's message
  * @param {string} [previousFuukaReply] - Fuuka's previous reply for conversation continuity
  * @param {string} [userId] - User identifier for conversation memory
  * @returns {Promise<string|null>} Fuuka's response or null on failure
  */
 async function askFuukaAI(userMessage, previousFuukaReply = "", userId = "default") {
+  const gameQuery = isGameRelated(userMessage);
+  const maxTokens = gameQuery ? MAX_TOKENS_GAME : MAX_TOKENS_CASUAL;
+
   const cacheKey = (userMessage + "|" + previousFuukaReply + "|" + getTimePeriod() + "|" + userId).toLowerCase().trim();
   const cached = getCachedResponse(cacheKey);
   if (cached) {
-    console.log("[AI] Cache hit:", cacheKey.substring(0, 60));
+    console.log(`[AI] Cache hit (${gameQuery ? "game" : "casual"}):`, cacheKey.substring(0, 60));
     return cached;
   }
 
-  const messages = buildMessages(userId, userMessage, previousFuukaReply);
+  const messages = buildMessages(userId, userMessage, previousFuukaReply, gameQuery);
 
   // Build provider priority list: Cerebras → Groq → OpenRouter
   const providerList = [];
@@ -406,17 +489,18 @@ async function askFuukaAI(userMessage, previousFuukaReply = "", userId = "defaul
   if (OPENROUTER_API_KEY) providerList.push(PROVIDERS.openrouter);
 
   if (providerList.length === 0) {
-    console.warn("[AI] No API keys configured (OPENROUTER_API_KEY or GROQ_API_KEY)");
+    console.warn("[AI] No API keys configured");
     return null;
   }
 
-  // Try each provider in order
+  console.log(`[AI] Query type: ${gameQuery ? "GAME (full knowledge)" : "CASUAL (base prompt)"} | max_tokens: ${maxTokens}`);
+
   for (const provider of providerList) {
     console.log(`[AI] Trying ${provider.name} (${provider.model})...`);
-    const reply = await callProvider(provider, messages);
+    const rawReply = await callProvider(provider, messages, maxTokens);
 
-    if (reply) {
-      // Success — save to history and cache
+    if (rawReply) {
+      const reply = sanitizeResponse(rawReply, gameQuery);
       addToHistory(userId, "user", userMessage);
       addToHistory(userId, "assistant", reply);
       setCachedResponse(cacheKey, reply);
