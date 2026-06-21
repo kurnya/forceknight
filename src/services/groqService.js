@@ -3,9 +3,17 @@ const https = require("https");
 // ── Provider configuration ────────────────────────────────────────────────
 const CEREBRAS_API_KEY = process.env.CEREBRAS_API_KEY || "";
 const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
+const SAMBANOVA_API_KEY = process.env.SAMBANOVA_API_KEY || "";
 
 const PROVIDERS = {
+  sambanova: {
+    name: "SambaNova",
+    tag: "SN",
+    url: "https://api.sambanova.ai/v1/chat/completions",
+    model: process.env.SAMBANOVA_MODEL || "Meta-Llama-3.3-70B-Instruct",
+    apiKey: SAMBANOVA_API_KEY,
+    timeout: 20000
+  },
   cerebras: {
     name: "Cerebras",
     tag: "CB",
@@ -21,14 +29,6 @@ const PROVIDERS = {
     model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
     apiKey: GROQ_API_KEY,
     timeout: 15000
-  },
-  openrouter: {
-    name: "OpenRouter",
-    tag: "OR",
-    url: "https://openrouter.ai/api/v1/chat/completions",
-    model: process.env.OPENROUTER_MODEL || "google/gemma-4-31b-it:free",
-    apiKey: OPENROUTER_API_KEY,
-    timeout: 20000
   }
 };
 
@@ -424,8 +424,7 @@ function callProvider(provider, messages, maxTokens, temperature) {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${provider.apiKey}`,
-          "Content-Length": Buffer.byteLength(payload),
-          ...(provider.name === "OpenRouter" ? { "HTTP-Referer": "https://github.com/forceknightbot", "X-Title": "ForceknightBot" } : {})
+          "Content-Length": Buffer.byteLength(payload)
         },
         timeout: provider.timeout
       },
@@ -494,11 +493,11 @@ async function askFuukaAI(userMessage, previousFuukaReply = "", userId = "defaul
 
   const messages = buildMessages(userId, userMessage, previousFuukaReply, gameQuery);
 
-  // Build provider priority list: Cerebras → Groq → OpenRouter
+  // Build provider priority list: SambaNova → Cerebras → Groq
   const providerList = [];
+  if (SAMBANOVA_API_KEY) providerList.push(PROVIDERS.sambanova);
   if (CEREBRAS_API_KEY) providerList.push(PROVIDERS.cerebras);
   if (GROQ_API_KEY) providerList.push(PROVIDERS.groq);
-  if (OPENROUTER_API_KEY) providerList.push(PROVIDERS.openrouter);
 
   if (providerList.length === 0) {
     console.warn("[AI] No API keys configured");
