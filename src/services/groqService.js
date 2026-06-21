@@ -1,17 +1,18 @@
 const https = require("https");
 
 // ── Provider configuration ────────────────────────────────────────────────
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
+const CEREBRAS_API_KEY = process.env.CEREBRAS_API_KEY || "";
 const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
 
 const PROVIDERS = {
-  openrouter: {
-    name: "OpenRouter",
-    tag: "OR",
-    url: "https://openrouter.ai/api/v1/chat/completions",
-    model: process.env.OPENROUTER_MODEL || "meta-llama/llama-3.3-70b-instruct:free",
-    apiKey: OPENROUTER_API_KEY,
-    timeout: 20000
+  cerebras: {
+    name: "Cerebras",
+    tag: "CB",
+    url: "https://api.cerebras.ai/v1/chat/completions",
+    model: process.env.CEREBRAS_MODEL || "llama-3.3-70b",
+    apiKey: CEREBRAS_API_KEY,
+    timeout: 15000
   },
   groq: {
     name: "Groq",
@@ -20,6 +21,14 @@ const PROVIDERS = {
     model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
     apiKey: GROQ_API_KEY,
     timeout: 15000
+  },
+  openrouter: {
+    name: "OpenRouter",
+    tag: "OR",
+    url: "https://openrouter.ai/api/v1/chat/completions",
+    model: process.env.OPENROUTER_MODEL || "google/gemma-4-31b-it:free",
+    apiKey: OPENROUTER_API_KEY,
+    timeout: 20000
   }
 };
 
@@ -355,10 +364,11 @@ async function askFuukaAI(userMessage, previousFuukaReply = "", userId = "defaul
 
   const messages = buildMessages(userId, userMessage, previousFuukaReply);
 
-  // Build provider priority list: OpenRouter first (if key exists), then Groq
+  // Build provider priority list: Cerebras → Groq → OpenRouter
   const providerList = [];
-  if (OPENROUTER_API_KEY) providerList.push(PROVIDERS.openrouter);
+  if (CEREBRAS_API_KEY) providerList.push(PROVIDERS.cerebras);
   if (GROQ_API_KEY) providerList.push(PROVIDERS.groq);
+  if (OPENROUTER_API_KEY) providerList.push(PROVIDERS.openrouter);
 
   if (providerList.length === 0) {
     console.warn("[AI] No API keys configured (OPENROUTER_API_KEY or GROQ_API_KEY)");

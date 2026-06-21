@@ -365,18 +365,10 @@ module.exports = {
     markCooldown(senderId);
 
     try {
-      // Try local patterns first
-      const complimentResponse = getComplimentResponse(rawText, chatId);
-      const greetingResponse = getGreetingResponse(rawText, chatId);
-      const localResponse = complimentResponse || greetingResponse;
-
       let text;
 
-      if (localResponse) {
-        // Local pattern matched
-        text = localResponse;
-      } else if (isBotMentioned) {
-        // Bot was @mentioned but no local pattern matched → call AI
+      if (isBotMentioned) {
+        // Bot was @mentioned → ALWAYS use AI, even if greeting/compliment pattern matches
         const cleanedMessage = rawText.replace(/@\d+/g, "").trim();
         const aiResponse = await askFuukaAI(cleanedMessage || "halo", "", senderId);
         text = aiResponse || getRandomFuukaResponse(chatId).response;
@@ -387,8 +379,10 @@ module.exports = {
         text = aiResponse || getRandomFuukaResponse(chatId).response;
         console.log(`[FUUKA AI] ${aiResponse ? "Reply conversation" : "Fallback to local"} | context: ${quotedText.substring(0, 50)}`);
       } else {
-        // Exact "fuuka" or other non-AI trigger → local response
-        text = getRandomFuukaResponse(chatId).response;
+        // No @mention, no reply → try local patterns first, then random fallback
+        const complimentResponse = getComplimentResponse(rawText, chatId);
+        const greetingResponse = getGreetingResponse(rawText, chatId);
+        text = complimentResponse || greetingResponse || getRandomFuukaResponse(chatId).response;
       }
 
       await sock.sendMessage(
