@@ -1,6 +1,6 @@
 const settings = require("../config/settings");
 const { isAllowedGroup } = require("../utils/groupValidator");
-const { extractMessageText, getMentionedJids } = require("../utils/messageParser");
+const { extractMessageText, getMentionedJids, getQuotedMessageContext } = require("../utils/messageParser");
 const stiker = require("../commands/stiker");
 const gambar = require("../commands/gambar");
 const audio = require("../commands/audio");
@@ -52,6 +52,18 @@ function isOwnMessage(sock, message) {
   return Boolean(senderNumber && botIdentityNumbers.has(senderNumber));
 }
 
+function isReplyingToBot(sock, message) {
+  const botIdentityNumbers = getBotIdentityNumbers(sock);
+  if (!botIdentityNumbers.size) {
+    return false;
+  }
+
+  const quotedParticipant = getQuotedMessageContext(message)?.participant;
+  const quotedParticipantNumber = normalizeJidUser(quotedParticipant);
+
+  return Boolean(quotedParticipantNumber && botIdentityNumbers.has(quotedParticipantNumber));
+}
+
 async function handleMessage(sock, message) {
   try {
     if (isOwnMessage(sock, message)) {
@@ -69,6 +81,11 @@ async function handleMessage(sock, message) {
 
     if (!isAllowedGroup(remoteJid)) {
       console.log("[GROUP BLOCKED] Grup tidak diizinkan:", remoteJid);
+      return;
+    }
+
+    if (isReplyingToBot(sock, message)) {
+      console.log("[REPLY IGNORED] Pesan reply ke Fuuka diabaikan:", remoteJid);
       return;
     }
 
@@ -163,5 +180,6 @@ async function handleMessage(sock, message) {
 module.exports = {
   handleMessage,
   isOwnMessage,
+  isReplyingToBot,
   normalizeJidUser
 };
