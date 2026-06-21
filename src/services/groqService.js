@@ -112,6 +112,7 @@ ATURAN PENTING:
 - JANGAN PERNAH memberikan saran equipment, item, build, stat, atau spot game yang tidak kamu ketahui dengan pasti.
 - Jika ada yang menanyakan tentang game Toram Online (build, quest, buff, dungeon, farming, guild, leveling, refine, craft, equipment, dungeon, boss, dll), SELALU arahkan untuk menggunakan command !help dengan singkat. Contoh: "Soal game? Cek !help yaa, Fuuka udah siapin info lengkap di sana~ (≧▽≦)"
 - Jawaban harus SINGKAT dan natural, maksimal 2-3 kalimat.
+- Jika user @mention dan menanyakan topik yang ada di menu help (seperti blacksmith, guild, raid, dll), sistem akan otomatis menampilkan info lengkap dari help command.
 
 GAYA BICARA:
 - Bahasa Indonesia santai campur sedikit kata Jepang (onii-chan, ehehe, yare yare, mouu)
@@ -202,6 +203,43 @@ function sanitizeResponse(text, isGameQuery) {
   }
 
   return clean;
+}
+
+// ── Help topic keyword mapping for intelligent command invocation ─────────
+const HELP_TOPIC_KEYWORDS = {
+  "#1": ["guild", "sejarah", "history", "pendirian", "logo", "master-a", "force knight", "makna guild"],
+  "#2": ["newbie", "pemula", "baru", "beginner", "panduan awal", "cara mulai"],
+  "#3": ["buff", "kode buff", "player buff", "buff player"],
+  "#4": ["bahan mq", "main quest", "material mq", "bahan quest"],
+  "#5": ["tas", "bag", "perluas tas", "expand bag", "inventory"],
+  "#6": ["leveling", "level char", "naik level", "exp", "leveling char"],
+  "#7": ["refine", "tips refine", "upgrade senjata", "refine tips"],
+  "#8": ["blacksmith", "stat blacksmith", "stat bs", "build blacksmith", "kemahiran tempa"],
+  "#9": ["profesi tempa", "leveling prof tempa", "kemahiran tempa", "smith profession"],
+  "#10": ["potensial", "potential", "enchant", "equipment potential"],
+  "#11": ["profesi padu", "leveling prof padu", "kemahiran padu", "synthesis profession"],
+  "#12": ["xtall master", "xtal master"],
+  "#13": ["xtall event", "xtal event"],
+  "#14": ["pet", "hewan peliharaan", "info pet"],
+  "#15": ["raid", "tips raid", "boss raid"],
+  "#16": ["status", "stat", "pengaruh status", "status point", "atribut"],
+  "#17": ["ailment", "interrupt", "status effect", "debuff", "ailment & interrupt"],
+  "#98": ["kata mutiara", "sepuh", "quotes", "motivasi"],
+  "#99": ["tes hoki", "kehokian", "luck test", "hoki"]
+};
+
+function detectHelpTopic(message) {
+  const lower = message.toLowerCase();
+  
+  for (const [topicKey, keywords] of Object.entries(HELP_TOPIC_KEYWORDS)) {
+    for (const keyword of keywords) {
+      if (lower.includes(keyword)) {
+        return topicKey;
+      }
+    }
+  }
+  
+  return null;
 }
 
 // Cache to reduce API calls
@@ -400,5 +438,6 @@ async function askFuukaAI(userMessage, previousFuukaReply = "", userId = "defaul
 
 module.exports = {
   askFuukaAI,
-  clearHistory
+  clearHistory,
+  detectHelpTopic
 };

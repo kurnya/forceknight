@@ -1,4 +1,5 @@
-const { askFuukaAI } = require("../services/groqService");
+const { askFuukaAI, detectHelpTopic } = require("../services/groqService");
+const helpCommand = require("./help");
 
 const fuukaResponses = {
   senang: [
@@ -409,8 +410,27 @@ module.exports = {
       let text;
 
       if (isBotMentioned) {
-        // Bot was @mentioned → ALWAYS use AI, even if greeting/compliment pattern matches
+        // Bot was @mentioned → check if user is asking about help topics
         const cleanedMessage = rawText.replace(/@\d+/g, "").trim();
+        
+        // First, try to detect if user is asking about a help topic
+        const helpTopic = detectHelpTopic(cleanedMessage);
+        
+        if (helpTopic) {
+          // User is asking about a help topic → invoke help command directly
+          console.log(`[FUUKA] Detected help topic ${helpTopic} in: ${cleanedMessage}`);
+          
+          // Execute the help command with the detected topic
+          await helpCommand.execute({
+            sock,
+            message,
+            args: [helpTopic]
+          });
+          
+          return; // Don't continue to AI response
+        }
+        
+        // Not a help topic → use AI
         const aiResponse = await askFuukaAI(cleanedMessage || "halo", "", senderId);
         text = aiResponse || getRandomFuukaResponse(chatId).response;
         console.log(`[FUUKA AI] ${aiResponse ? "AI response" : "Fallback to local"} for: ${cleanedMessage}`);
