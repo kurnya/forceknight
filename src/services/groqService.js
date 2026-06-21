@@ -1,15 +1,35 @@
 const https = require("https");
 
-const API_KEY = process.env.GROQ_API_KEY || "";
-const API_URL = "https://api.groq.com/openai/v1/chat/completions";
-const MODEL = "llama-3.3-70b-versatile";
+// ── Provider configuration ────────────────────────────────────────────────
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
+const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
+
+const PROVIDERS = {
+  openrouter: {
+    name: "OpenRouter",
+    tag: "OR",
+    url: "https://openrouter.ai/api/v1/chat/completions",
+    model: process.env.OPENROUTER_MODEL || "meta-llama/llama-3.3-70b-instruct:free",
+    apiKey: OPENROUTER_API_KEY,
+    timeout: 20000
+  },
+  groq: {
+    name: "Groq",
+    tag: "GROQ",
+    url: "https://api.groq.com/openai/v1/chat/completions",
+    model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
+    apiKey: GROQ_API_KEY,
+    timeout: 15000
+  }
+};
+
 const MAX_TOKENS = 300;
 const TEMPERATURE = 0.75;
 
 // ── Conversation memory (per-user, in-memory) ─────────────────────────────
 const conversationHistory = new Map();
-const MAX_HISTORY_TURNS = 6; // keep last 6 user+assistant pairs
-const HISTORY_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const MAX_HISTORY_TURNS = 6;
+const HISTORY_TTL_MS = 30 * 60 * 1000;
 
 function getHistory(userId) {
   const entry = conversationHistory.get(userId);
@@ -30,7 +50,6 @@ function addToHistory(userId, role, content) {
   entry.messages.push({ role, content });
   entry.lastAccess = Date.now();
 
-  // Keep only last N turns (each turn = 2 messages: user + assistant)
   const maxMessages = MAX_HISTORY_TURNS * 2;
   if (entry.messages.length > maxMessages) {
     entry.messages = entry.messages.slice(-maxMessages);
@@ -204,22 +223,22 @@ function getTimeContext() {
   return `Saat ini jam ${hour}:00 WIB, waktu ${labels[period]}.`;
 }
 
-function getCachedResponse(userMessage) {
-  const entry = responseCache.get(userMessage);
+function getCachedResponse(cacheKey) {
+  const entry = responseCache.get(cacheKey);
   if (!entry) return null;
   if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
-    responseCache.delete(userMessage);
+    responseCache.delete(cacheKey);
     return null;
   }
   return entry.response;
 }
 
-function setCachedResponse(userMessage, response) {
+function setCachedResponse(cacheKey, response) {
   if (responseCache.size >= CACHE_MAX_SIZE) {
     const oldestKey = responseCache.keys().next().value;
     responseCache.delete(oldestKey);
   }
-  responseCache.set(userMessage, { response, timestamp: Date.now() });
+  responseCache.set(cacheKey, { response, timestamp: Date.now() });
 }
 
 /**
@@ -231,13 +250,11 @@ function buildMessages(userId, userMessage, previousFuukaReply) {
     { role: "system", content: `KONTEKS WAKTU: ${getTimeContext()}` }
   ];
 
-  // Load previous conversation history
   const history = getHistory(userId);
   for (const msg of history) {
     messages.push({ role: msg.role, content: msg.content });
   }
 
-  // If replying to Fuuka's previous message and it's not already the last in history
   if (previousFuukaReply) {
     const lastMsg = messages[messages.length - 1];
     if (!lastMsg || lastMsg.role !== "assistant" || lastMsg.content !== previousFuukaReply) {
@@ -245,52 +262,37 @@ function buildMessages(userId, userMessage, previousFuukaReply) {
     }
   }
 
-  // Add current user message
   messages.push({ role: "user", content: userMessage });
-
   return messages;
 }
 
 /**
- * Ask Fuuka AI via Groq API (llama-3.3-70b-versatile)
- * @param {string} userMessage - The user's message (with @mention already stripped)
- * @param {string} [previousFuukaReply] - Fuuka's previous reply for conversation continuity
- * @param {string} [userId] - User identifier for conversation memory
- * @returns {Promise<string|null>} Fuuka's response or null on failure
+ * Call a provider API (OpenAI-compatible format)
+ * @param {object} provider - Provider config from PROVIDERS
+ * @param {Array} messages - Chat messages array
+ * @returns {Promise<string|null>} Reply text or null on failure
  */
-async function askFuukaAI(userMessage, previousFuukaReply = "", userId = "default") {
-  if (!API_KEY) {
-    console.warn("[GROQ] GROQ_API_KEY tidak ditemukan di .env");
-    return null;
-  }
-
-  const cacheKey = (userMessage + "|" + previousFuukaReply + "|" + getTimePeriod() + "|" + userId).toLowerCase().trim();
-  const cached = getCachedResponse(cacheKey);
-  if (cached) {
-    console.log("[GROQ] Cache hit:", cacheKey.substring(0, 60));
-    return cached;
-  }
-
-  const messages = buildMessages(userId, userMessage, previousFuukaReply);
-
-  const payload = JSON.stringify({
-    model: MODEL,
-    messages,
-    temperature: TEMPERATURE,
-    max_tokens: MAX_TOKENS
-  });
-
+function callProvider(provider, messages) {
   return new Promise((resolve) => {
+    const url = new URL(provider.url);
+    const payload = JSON.stringify({
+      model: provider.model,
+      messages,
+      temperature: TEMPERATURE,
+      max_tokens: MAX_TOKENS
+    });
+
     const req = https.request(
-      API_URL,
+      url.toString(),
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${API_KEY}`,
-          "Content-Length": Buffer.byteLength(payload)
+          Authorization: `Bearer ${provider.apiKey}`,
+          "Content-Length": Buffer.byteLength(payload),
+          ...(provider.name === "OpenRouter" ? { "HTTP-Referer": "https://github.com/forceknightbot", "X-Title": "ForceknightBot" } : {})
         },
-        timeout: 15000
+        timeout: provider.timeout
       },
       (res) => {
         let data = "";
@@ -299,27 +301,21 @@ async function askFuukaAI(userMessage, previousFuukaReply = "", userId = "defaul
           try {
             const json = JSON.parse(data);
             if (json.error) {
-              console.error("[GROQ] API error:", json.error.message);
+              console.error(`[${provider.tag}] API error:`, json.error.message || JSON.stringify(json.error));
               resolve(null);
               return;
             }
             const reply = json.choices?.[0]?.message?.content?.trim();
             if (reply) {
-              const tokenCount = json.usage?.total_tokens || "?";
-              console.log(`[GROQ] Response (${tokenCount} tokens):`, reply.substring(0, 80));
-
-              // Save to conversation history
-              addToHistory(userId, "user", userMessage);
-              addToHistory(userId, "assistant", reply);
-
-              setCachedResponse(cacheKey, reply);
+              const tokens = json.usage?.total_tokens || "?";
+              console.log(`[${provider.tag}] Response (${tokens} tokens):`, reply.substring(0, 80));
               resolve(reply);
             } else {
-              console.error("[GROQ] Empty response");
+              console.error(`[${provider.tag}] Empty response`);
               resolve(null);
             }
           } catch (error) {
-            console.error("[GROQ] Parse error:", error.message);
+            console.error(`[${provider.tag}] Parse error:`, error.message);
             resolve(null);
           }
         });
@@ -327,19 +323,66 @@ async function askFuukaAI(userMessage, previousFuukaReply = "", userId = "defaul
     );
 
     req.on("timeout", () => {
-      console.error("[GROQ] Request timeout");
+      console.error(`[${provider.tag}] Request timeout (${provider.timeout}ms)`);
       req.destroy();
       resolve(null);
     });
 
     req.on("error", (error) => {
-      console.error("[GROQ] Request error:", error.message);
+      console.error(`[${provider.tag}] Request error:`, error.message);
       resolve(null);
     });
 
     req.write(payload);
     req.end();
   });
+}
+
+/**
+ * Ask Fuuka AI — tries OpenRouter first, falls back to Groq
+ * @param {string} userMessage - The user's message (with @mention already stripped)
+ * @param {string} [previousFuukaReply] - Fuuka's previous reply for conversation continuity
+ * @param {string} [userId] - User identifier for conversation memory
+ * @returns {Promise<string|null>} Fuuka's response or null on failure
+ */
+async function askFuukaAI(userMessage, previousFuukaReply = "", userId = "default") {
+  const cacheKey = (userMessage + "|" + previousFuukaReply + "|" + getTimePeriod() + "|" + userId).toLowerCase().trim();
+  const cached = getCachedResponse(cacheKey);
+  if (cached) {
+    console.log("[AI] Cache hit:", cacheKey.substring(0, 60));
+    return cached;
+  }
+
+  const messages = buildMessages(userId, userMessage, previousFuukaReply);
+
+  // Build provider priority list: OpenRouter first (if key exists), then Groq
+  const providerList = [];
+  if (OPENROUTER_API_KEY) providerList.push(PROVIDERS.openrouter);
+  if (GROQ_API_KEY) providerList.push(PROVIDERS.groq);
+
+  if (providerList.length === 0) {
+    console.warn("[AI] No API keys configured (OPENROUTER_API_KEY or GROQ_API_KEY)");
+    return null;
+  }
+
+  // Try each provider in order
+  for (const provider of providerList) {
+    console.log(`[AI] Trying ${provider.name} (${provider.model})...`);
+    const reply = await callProvider(provider, messages);
+
+    if (reply) {
+      // Success — save to history and cache
+      addToHistory(userId, "user", userMessage);
+      addToHistory(userId, "assistant", reply);
+      setCachedResponse(cacheKey, reply);
+      return reply;
+    }
+
+    console.log(`[AI] ${provider.name} failed, trying next provider...`);
+  }
+
+  console.error("[AI] All providers failed");
+  return null;
 }
 
 module.exports = {
