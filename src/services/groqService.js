@@ -34,7 +34,8 @@ const PROVIDERS = {
 
 const MAX_TOKENS_CASUAL = 150;
 const MAX_TOKENS_GAME = 500;
-const TEMPERATURE = 0.75;
+const TEMPERATURE_CASUAL = 0.75;
+const TEMPERATURE_GAME = 0.3; // Lower = more factual, less hallucination
 
 // ── Conversation memory (per-user, in-memory) ─────────────────────────────
 const conversationHistory = new Map();
@@ -108,6 +109,7 @@ ATURAN PENTING:
 - Kamu BUKAN AI atau bot. Kamu adalah Fuuka, gadis anime yang nyata.
 - JANGAN PERNAH menyebut diri sebagai AI, bot, asisten, atau program.
 - JANGAN mengarang informasi yang tidak kamu ketahui. Kalau tidak tahu, bilang saja tidak tahu dengan gaya Fuuka.
+- JANGAN PERNAH memberikan saran equipment, item, build, stat, atau spot game yang tidak kamu ketahui dengan pasti.
 - Jawaban harus SINGKAT dan natural, maksimal 2-3 kalimat.
 
 GAYA BICARA:
@@ -132,7 +134,15 @@ TOPIK YANG BISA DIOBROLKAN:
 
 const GUILD_KNOWLEDGE = `
 
-DATA GUILD FORCE KNIGHT (gunakan HANYA saat ditanya):
+DATA GUILD FORCE KNIGHT — ATURAN KETAT:
+- Jawab HANYA berdasarkan data di bawah ini. JANGAN menambahkan informasi, item, equipment, atau saran yang TIDAK ada di data ini.
+- JANGAN mengarang nama equipment, item, crystal, material, atau spot yang tidak tercantum.
+- Jika data tidak tersedia untuk pertanyaan user, bilang: "Hmm, Fuuka nggak punya data soal itu nih~ coba tanya langsung ke member senior yaa" dengan gaya Fuuka.
+- Untuk pertanyaan leveling: jawab HANYA mob dan lokasi yang ada di Leveling Guide, JANGAN rekomendasikan equipment atau build kecuali user tanya spesifik soal itu.
+- Untuk pertanyaan build/stat: jawab HANYA berdasarkan data Stat Blacksmith dan Potensial Equipment di bawah.
+- JANGAN gabungkan data dari pengetahuan umum Toram Online — hanya gunakan data Force Knight di bawah ini.
+
+DATA GUILD:
 
 Kode Buff Player Toram:
 - Max HP: 1180755 | Max MP: 9090903 | AMPR: 1234561
@@ -394,15 +404,16 @@ function buildMessages(userId, userMessage, previousFuukaReply, includeGuildData
  * @param {object} provider - Provider config from PROVIDERS
  * @param {Array} messages - Chat messages array
  * @param {number} maxTokens - Max tokens for response
+ * @param {number} temperature - Sampling temperature
  * @returns {Promise<string|null>} Reply text or null on failure
  */
-function callProvider(provider, messages, maxTokens) {
+function callProvider(provider, messages, maxTokens, temperature) {
   return new Promise((resolve) => {
     const url = new URL(provider.url);
     const payload = JSON.stringify({
       model: provider.model,
       messages,
-      temperature: TEMPERATURE,
+      temperature,
       max_tokens: maxTokens
     });
 
@@ -472,6 +483,7 @@ function callProvider(provider, messages, maxTokens) {
 async function askFuukaAI(userMessage, previousFuukaReply = "", userId = "default") {
   const gameQuery = isGameRelated(userMessage);
   const maxTokens = gameQuery ? MAX_TOKENS_GAME : MAX_TOKENS_CASUAL;
+  const temperature = gameQuery ? TEMPERATURE_GAME : TEMPERATURE_CASUAL;
 
   const cacheKey = (userMessage + "|" + previousFuukaReply + "|" + getTimePeriod() + "|" + userId).toLowerCase().trim();
   const cached = getCachedResponse(cacheKey);
@@ -493,11 +505,11 @@ async function askFuukaAI(userMessage, previousFuukaReply = "", userId = "defaul
     return null;
   }
 
-  console.log(`[AI] Query type: ${gameQuery ? "GAME (full knowledge)" : "CASUAL (base prompt)"} | max_tokens: ${maxTokens}`);
+  console.log(`[AI] Query type: ${gameQuery ? "GAME (full knowledge)" : "CASUAL (base prompt)"} | max_tokens: ${maxTokens} | temp: ${temperature}`);
 
   for (const provider of providerList) {
     console.log(`[AI] Trying ${provider.name} (${provider.model})...`);
-    const rawReply = await callProvider(provider, messages, maxTokens);
+    const rawReply = await callProvider(provider, messages, maxTokens, temperature);
 
     if (rawReply) {
       const reply = sanitizeResponse(rawReply, gameQuery);
