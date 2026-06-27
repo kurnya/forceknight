@@ -98,7 +98,7 @@ async function handleMessage(sock, message) {
     const hasPrefix = messageText.startsWith(settings.prefix);
     const normalizedMessageText = messageText.toLowerCase();
     const plainCommandName = normalizedMessageText.split(/\s+/)[0];
-    const mentionedJids = getMentionedJids(message);
+const mentionedJids = getMentionedJids(message);
     const botIdentityNumbers = getBotIdentityNumbers(sock);
     const isBotMentioned = mentionedJids.length > 0 && mentionedJids.some((jid) => {
       const jidNum = normalizeJidUser(jid);
@@ -106,9 +106,11 @@ async function handleMessage(sock, message) {
     });
     const isReplyToBot = false;
     const quotedText = "";
-
     if (mentionedJids.length > 0) {
       console.log("[DEBUG] mentionedJids:", mentionedJids);
+      console.log("[DEBUG] sock.user.id:", sock?.user?.id);
+      console.log("[DEBUG] sock.user.lid:", sock?.user?.lid);
+      console.log("[DEBUG] settings.botNumber:", settings.botNumber);
       console.log("[DEBUG] botIdentityNumbers:", [...botIdentityNumbers]);
       console.log("[DEBUG] isBotMentioned:", isBotMentioned);
     }

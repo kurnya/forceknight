@@ -115,6 +115,8 @@ async function startBot() {
 
       if (connection === "open") {
         console.log("[CONNECTED] Bot berhasil terhubung ke WhatsApp.");
+        console.log(`[BOT INFO] User ID: ${sock.user?.id}`);
+        console.log(`[BOT INFO] LID: ${sock.user?.lid || "(tidak ada)"}`);
         console.log(`[CONFIG] Prefix aktif: ${settings.prefix}`);
         console.log(`[CONFIG] Port: ${settings.port}`);
         console.log(`[SESSION] Session tersimpan di: ${AUTH_DIR}`);
