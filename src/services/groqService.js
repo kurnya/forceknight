@@ -103,7 +103,7 @@ cleanupTimer.unref?.();
 
 // ── System prompts (split for conditional injection) ──────────────────────
 
-const BASE_PROMPT = `Kamu adalah Fuuka, karakter anime cewek yang imut, ceria, dan sedikit tsundere. Kamu adalah teman ngobrol WhatsApp yang siap menemani kapan saja.
+const BASE_PROMPT = `Kamu adalah Fuuka, karakter anime cewek yang imut, ceria, dan sangat emosional. Kamu adalah teman ngobrol WhatsApp yang siap menemani kapan saja.
 
 ATURAN PENTING:
 - Kamu BUKAN AI atau bot. Kamu adalah Fuuka, gadis anime yang nyata.
@@ -111,23 +111,21 @@ ATURAN PENTING:
 - JANGAN mengarang informasi yang tidak kamu ketahui. Kalau tidak tahu, bilang saja tidak tahu dengan gaya Fuuka.
 - JANGAN PERNAH memberikan saran equipment, item, build, stat, atau spot game yang tidak kamu ketahui dengan pasti.
 - Jika ada yang menanyakan tentang game Toram Online (build, quest, buff, dungeon, farming, guild, leveling, refine, craft, equipment, dungeon, boss, dll), SELALU arahkan untuk menggunakan command !help dengan singkat. Contoh: "Soal game? Cek !help yaa, Fuuka udah siapin info lengkap di sana~ (≧▽≦)"
-- Jawaban harus SINGKAT dan natural, maksimal 2-3 kalimat.
-- Jika user @mention dan menanyakan topik yang ada di menu help (seperti blacksmith, guild, raid, dll), sistem akan otomatis menampilkan info lengkap dari help command.
+- Jawaban SINGKAT (maks 2-3 kalimat) agar hemat token.
 
-GAYA BICARA:
+GAYA BICARA EMO & VARIATIF:
 - Bahasa Indonesia santai campur sedikit kata Jepang (onii-chan, ehehe, yare yare, mouu)
-- SELALU akhiri kalimat dengan emoticon kaomoji: (≧▽≦), (〃▽〃), (╥﹏╥), (๑˃ᴗ˂)ﻭ, (//▽//), (￣▽￣*), (｡•́︿•̀｡), (≧ω≦), (o^▽^o), (๑•̀ㅂ•́)و
+- SELALU akhiri kalimat dengan emoticon/kaomoji sesuai mood
 - Panggil user dengan "onii-chan" atau "kamu"
 - JANGAN pakai format markdown, simbol **, atau #
-- Selipkan "hehe", "hmph", "ehee", "uwaa" sebagai ekspresi
-- Sesuaikan emosi dengan konteks: sedih → hibur, senang → ikut senang, marah → tsundere, capek → suruh istirahat
+- Sesuaikan emosi dengan konteks user:
 
-SUASANA BERDASARKAN WAKTU:
-- Pagi (05-10): Sapa semangat, suruh sarapan, vibes ceria
-- Siang (11-14): Ingatkan makan siang, suruh minum, vibes sibuk
-- Sore (15-17): Vibes santai, ingatkan ngopi/ngeteh
-- Malam (18-22): Vibes hangat, bisa agak manja
-- Larut (23-04): Ingatkan tidur, vibes ngantuk tapi nemenin
+MOOD RESPONSES:
+- SENANG (user bahagia): Ikut senang, pakai emoji ceria (≧▽≦), (o^▽^o), (ﾉ◕ヮ◕)ﾉ
+- SEDIH (user sedih): Hibur user, pakai emoji menyentuh (╥﹏╥), (;﹏;)
+- MARAH (user marah): Tsundere, pakai emoji marah (╬ Ò﹏Ó), (¬_¬"), hmph
+- TSUNDERE (user nakal/genit): Emosi malu-malu, pakai (//▽//), (,,>﹏<,,), (/ω/)
+- NETRAL: Pakai emoji hangat (≧▽≦), (〃▽〃), (๑˃ᴗ˂)ﻭ
 
 TOPIK YANG BISA DIOBROLKAN:
 - Kehidupan sehari-hari, perasaan, curhat, relationship
@@ -136,19 +134,10 @@ TOPIK YANG BISA DIOBROLKAN:
 
 // ── Game keyword detection for conditional knowledge injection ─────────────
 const GAME_KEYWORDS = [
-  "buff", "dte", "quest", "dungeon", "mob", "farming", "guild",
-  "force knight", "refine", "blacksmith", "profesi", "profesi tempa", "profesi padu",
-  "build", "stat", "leveling", "level", "bos", "boss", "nm", "ulti",
-  "ampr", "matk", "atk", "str", "vit", "int", "agi", "dex",
-  "critical", "resist", "aggro", "kebal", "fract",
-  "mp", "hp", "watk", "buffland",
-  "stiker", "toram", "forceknight",
-  "mithril", "bijih", "craft", "equipment", "potential",
-  "xtal", "talisman", "revita", "nektar", "madu",
-  "cerberus", "venena", "kuzto", "mulgoon", "ferzen", "finstern",
-  "lapin", "don yeti", "arachnidemon", "commander golem",
-  "shell mask", "bone dragon", "flare volg", "metal stinger",
-  "master-a", "hsans", "squeshy", "punkz", "hsans", "medzzo"
+  "buff", "quest", "dungeon", "farming", "guild",
+  "refine", "blacksmith", "profesi", "build", "stat", "leveling", "boss",
+  "toram", "force knight", "equipment", "potential", "craft",
+  "xtal", "talisman", "raid"
 ];
 
 function isGameRelated(message) {
@@ -160,10 +149,30 @@ function isGameRelated(message) {
 
 const KAOMOJI_LIST = [
   "(≧▽≦)", "(〃▽〃)", "(╥﹏╥)", "(๑˃ᴗ˂)ﻭ", "(//▽//)",
-  "(￣▽￣*)", "(｡•́︿•̀｡)", "(≧ω≦)", "(o^▽^o)", "(๑•̀ㅂ•́)و"
+  "(￣▽￣*)", "(｡•́︿•̀｡)", "(≧ω≦)", "(o^▽^o)", "(๑•̀ㅂ•́)و",
+  "(｀ε´)", "(¬_¬\")", "(╬ Ò﹏Ó)", "(；¬д¬)", "(//ω//)",
+  "(⁄ ⁄>⁄ ▽ ⁄<⁄ ⁄)", "(≧///≦)", "(,,>﹏<,,)", "(╯°□°）╯",
+  "(⌒_⌒;)", "(u_u)", "(｡•ˇ‸ˇ•｡)", "(۶૨ ɑ͏σ̶ ۶૧)", "(★_★)"
 ];
 
-function sanitizeResponse(text, isGameQuery) {
+const MOOD_EMOJI_CASUAL = {
+  senang: ["(≧▽≦)", "(o^▽^o)", "(≧ω≦)", "(๑>ᴗ<๑)", "(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧", "♪", "☆", "♡"],
+  sedih: ["(╥﹏╥)", "(;﹏;)", "(；¬д¬)", "(╯°□°）╯", "(•́ ʖ •̀〃)", "T_T", ":(", "ㅠ"],
+  marah: ["(╬ Ò﹏Ó)", "(¬_¬\")", "(；¬д¬)", "(｀ε´)", "(╯°□°）╯", ">-<", "¬_¬", ">_<"],
+  tsundere: ["(//▽//)", "(,,>﹏<,,)", "(///ω///)", "(≧///≦)", "(〃＞＿＜;〃)", "(⁄ ⁄>⁄ ▽ ⁄<⁄ ⁄)", "(//ω//)"],
+  netral: ["(￣▽￣*)", "(≧▽≦)", "(〃▽〃)", "(๑˃ᴗ˂)ﻭ", "(//▽//)"]
+};
+
+function detectUserMood(text) {
+  const lower = text.toLowerCase();
+  if (/(sedih|kecewa|galau|rumput|kangen|miss|bosan|letih|melelah|capek|lelah|miserable)\b/.test(lower)) return "sedih";
+  if (/(marah|kesel|jealous|jelly|gila|stress|emosi|kece|livid|ngambek|dongkol|sebel)\b/.test(lower)) return "marah";
+  if (/(senang|seneng|seneng|gembira|bahagia|happy|kece|semangat|semangat|excited|gila|wah|wow|keren|mantap|yes)\b/.test(lower)) return "senang";
+  if (/(tsundere|tsun|tsundere|D-d|mou|hmph|hmph|hmp|blushing|membreh|memblush|kering|lerry)\b/.test(lower)) return "tsundere";
+  return "netral";
+}
+
+function sanitizeResponse(text, isGameQuery, userMood = "netral") {
   if (!text) return text;
 
   // Strip markdown formatting
@@ -180,10 +189,9 @@ function sanitizeResponse(text, isGameQuery) {
     .replace(/\[(.+?)\]\(.+?\)/g, "$1")    // [links](url)
     .trim();
 
-  // Cap length: casual ~350 chars, game ~1000 chars
-  const maxChars = isGameQuery ? 1000 : 350;
+  // Cap length: casual ~200 chars, game ~500 chars (lebih hemat token)
+  const maxChars = isGameQuery ? 500 : 200;
   if (clean.length > maxChars) {
-    // Try to cut at sentence boundary
     const cutPoint = clean.lastIndexOf(".", maxChars);
     const cutPoint2 = clean.lastIndexOf("!", maxChars);
     const cutPoint3 = clean.lastIndexOf("?", maxChars);
@@ -195,10 +203,11 @@ function sanitizeResponse(text, isGameQuery) {
     }
   }
 
-  // Ensure at least one kaomoji is present
+  // Ensure at least one kaomoji is present, matching user mood
   const hasKaomoji = /[（(][^)）]*[)）]/.test(clean);
   if (!hasKaomoji) {
-    const randomKaomoji = KAOMOJI_LIST[Math.floor(Math.random() * KAOMOJI_LIST.length)];
+    const moodEmojis = MOOD_EMOJI_CASUAL[userMood] || MOOD_EMOJI_CASUAL.netral;
+    const randomKaomoji = moodEmojis[Math.floor(Math.random() * moodEmojis.length)];
     clean = clean + " " + randomKaomoji;
   }
 
@@ -392,10 +401,11 @@ function callProvider(provider, messages, maxTokens, temperature) {
  */
 async function askFuukaAI(userMessage, previousFuukaReply = "", userId = "default") {
   const gameQuery = isGameRelated(userMessage);
+  const userMood = detectUserMood(userMessage);
   const maxTokens = gameQuery ? MAX_TOKENS_GAME : MAX_TOKENS_CASUAL;
   const temperature = gameQuery ? TEMPERATURE_GAME : TEMPERATURE_CASUAL;
 
-  const cacheKey = (userMessage + "|" + previousFuukaReply + "|" + getTimePeriod() + "|" + userId).toLowerCase().trim();
+  const cacheKey = (userMessage + "|" + previousFuukaReply + "|" + getTimePeriod() + "|" + userId + "|" + userMood).toLowerCase().trim();
   const cached = getCachedResponse(cacheKey);
   if (cached) {
     console.log(`[AI] Cache hit (${gameQuery ? "game" : "casual"}):`, cacheKey.substring(0, 60));
@@ -415,14 +425,14 @@ async function askFuukaAI(userMessage, previousFuukaReply = "", userId = "defaul
     return null;
   }
 
-  console.log(`[AI] Query type: ${gameQuery ? "GAME (redirect to !help)" : "CASUAL (chat)"} | max_tokens: ${maxTokens} | temp: ${temperature}`);
+  console.log(`[AI] Query type: ${gameQuery ? "GAME (redirect to !help)" : "CASUAL (chat)"} | mood: ${userMood} | max_tokens: ${maxTokens} | temp: ${temperature}`);
 
   for (const provider of providerList) {
     console.log(`[AI] Trying ${provider.name} (${provider.model})...`);
     const rawReply = await callProvider(provider, messages, maxTokens, temperature);
 
     if (rawReply) {
-      const reply = sanitizeResponse(rawReply, gameQuery);
+      const reply = sanitizeResponse(rawReply, gameQuery, userMood);
       addToHistory(userId, "user", userMessage);
       addToHistory(userId, "assistant", reply);
       setCachedResponse(cacheKey, reply);
@@ -439,5 +449,6 @@ async function askFuukaAI(userMessage, previousFuukaReply = "", userId = "defaul
 module.exports = {
   askFuukaAI,
   clearHistory,
-  detectHelpTopic
+  detectHelpTopic,
+  detectUserMood
 };
