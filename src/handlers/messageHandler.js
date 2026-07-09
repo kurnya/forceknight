@@ -34,6 +34,15 @@ function getBotIdentityNumbers(sock) {
   );
 }
 
+// Kumpulkan raw JID bot (termasuk format LID) untuk matching mention
+function getBotRawJids(sock) {
+  const rawJids = new Set();
+  if (sock?.user?.id) rawJids.add(sock.user.id.split(":")[0] + "@s.whatsapp.net");
+  if (sock?.user?.id) rawJids.add(sock.user.id); // full JID
+  if (sock?.user?.lid) rawJids.add(sock.user.lid); // LID format
+  return rawJids;
+}
+
 function isOwnMessage(sock, message) {
   if (!message || message.key?.fromMe) {
     return true;
@@ -100,9 +109,18 @@ async function handleMessage(sock, message) {
     const plainCommandName = normalizedMessageText.split(/\s+/)[0];
 const mentionedJids = getMentionedJids(message);
     const botIdentityNumbers = getBotIdentityNumbers(sock);
+    const botRawJids = getBotRawJids(sock);
     const isBotMentioned = mentionedJids.length > 0 && mentionedJids.some((jid) => {
+      // Cek via normalized number (format normal: 628xxx@s.whatsapp.net)
       const jidNum = normalizeJidUser(jid);
-      return jidNum && botIdentityNumbers.has(jidNum);
+      if (jidNum && botIdentityNumbers.has(jidNum)) return true;
+      // Cek via raw JID (format LID: 12345:0@lid)
+      if (botRawJids.has(jid)) return true;
+      // Cek partial: bagian sebelum ':' atau '@' sama dengan LID bot
+      const jidBase = jid.split(/[:@]/)[0];
+      const lidBase = String(sock?.user?.lid || "").split(/[:@]/)[0];
+      if (jidBase && lidBase && jidBase === lidBase) return true;
+      return false;
     });
     const isReplyToBot = false;
     const quotedText = "";
@@ -112,6 +130,7 @@ const mentionedJids = getMentionedJids(message);
       console.log("[DEBUG] sock.user.lid:", sock?.user?.lid);
       console.log("[DEBUG] settings.botNumber:", settings.botNumber);
       console.log("[DEBUG] botIdentityNumbers:", [...botIdentityNumbers]);
+      console.log("[DEBUG] botRawJids:", [...botRawJids]);
       console.log("[DEBUG] isBotMentioned:", isBotMentioned);
     }
     const isFuukaWithoutPrefix = fuuka.shouldTriggerWithoutPrefix(normalizedMessageText) || isBotMentioned;
