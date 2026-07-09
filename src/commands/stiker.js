@@ -71,12 +71,13 @@ async function convertVideoToSticker(videoBuffer) {
         .outputOptions([
           "-t 6",
           "-threads 1",
-          "-vf scale=512:512:force_original_aspect_ratio=increase,crop=512:512,fps=10",
+          "-vcodec libwebp_anim",
+          "-vf scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=0x00000000,fps=15",
           "-loop 0",
           "-an",
-          "-vsync 0",
-          "-quality 65",
-          "-compression_level 4"
+          "-q:v 70",
+          "-compression_level 4",
+          "-preset default"
         ])
         .format("webp")
         .save(outputPath)
