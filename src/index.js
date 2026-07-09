@@ -16,7 +16,7 @@ const qrcode = require("qrcode-terminal");
 const sharp = require("sharp");
 
 const settings = require("./config/settings");
-const { handleMessage } = require("./handlers/messageHandler");
+const { handleMessage, tryCaptureBotLid } = require("./handlers/messageHandler");
 const { startTempCleanupScheduler } = require("./utils/tempCleanup");
 const { configureMediaQueue, drainMediaQueue } = require("./utils/mediaQueue");
 
@@ -121,6 +121,14 @@ async function startBot() {
         console.log(`[CONFIG] Port: ${settings.port}`);
         console.log(`[SESSION] Session tersimpan di: ${AUTH_DIR}`);
         isStarting = false;
+
+        // Coba tangkap LID bot dari creds yang tersimpan di auth state
+        // Baileys menyimpan LID di state.creds.me.lid atau .me
+        const me = state?.creds?.me;
+        if (me?.lid) {
+          tryCaptureBotLid(sock, { key: { fromMe: true, participant: me.lid }, _fromCreds: true });
+          console.log(`[BOT INFO] LID dari creds: ${me.lid}`);
+        }
       }
 
       if (connection === "close") {
@@ -147,6 +155,15 @@ async function startBot() {
       }
 
       await handleMessage(sock, message);
+    });
+
+    // Tangkap LID bot dari event participant grup
+    sock.ev.on("group-participants.update", ({ participants }) => {
+      if (!participants) return;
+      tryCaptureBotLid(sock, {
+        key: { fromMe: false, participant: null },
+        _groupParticipants: participants
+      });
     });
   } catch (error) {
     console.error("[START ERROR] Gagal menjalankan bot:", error);

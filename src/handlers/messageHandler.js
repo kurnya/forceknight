@@ -18,6 +18,9 @@ for (const command of registeredCommands) {
   }
 }
 
+// Cache untuk menyimpan LID bot yang ditemukan dari pesan grup
+let cachedBotLid = null;
+
 function normalizeJidUser(value) {
   return String(value || "")
     .split(/[:@]/)[0]
@@ -29,6 +32,7 @@ function getBotIdentityNumbers(sock) {
     [
       normalizeJidUser(sock?.user?.id),
       normalizeJidUser(sock?.user?.lid),
+      normalizeJidUser(cachedBotLid),
       normalizeJidUser(settings.botNumber)
     ].filter(Boolean)
   );
@@ -38,9 +42,29 @@ function getBotIdentityNumbers(sock) {
 function getBotRawJids(sock) {
   const rawJids = new Set();
   if (sock?.user?.id) rawJids.add(sock.user.id.split(":")[0] + "@s.whatsapp.net");
-  if (sock?.user?.id) rawJids.add(sock.user.id); // full JID
-  if (sock?.user?.lid) rawJids.add(sock.user.lid); // LID format
+  if (sock?.user?.id) rawJids.add(sock.user.id); // full JID dengan device suffix
+  if (sock?.user?.lid) rawJids.add(sock.user.lid); // LID dari sock (kalau ada)
+  if (cachedBotLid) rawJids.add(cachedBotLid); // LID yang sudah dicache
   return rawJids;
+}
+
+/**
+ * Coba ekstrak dan cache LID bot dari berbagai sumber:
+ * 1. Creds saat koneksi open (state.creds.me.lid)
+ * 2. Participant pesan fromMe — paling akurat, langsung dari pesan bot sendiri
+ */
+function tryCaptureBotLid(sock, message) {
+  if (cachedBotLid) return; // sudah punya cache, skip
+
+  const participant = message.key?.participant;
+  if (!participant) return;
+
+  // Sumber 1 & 2: participant harus berformat @lid
+  if (message.key?.fromMe && participant.endsWith("@lid")) {
+    cachedBotLid = participant;
+    const src = message._fromCreds ? "creds" : "participant fromMe";
+    console.log(`[BOT LID] LID bot berhasil dicache dari ${src}:`, cachedBotLid);
+  }
 }
 
 function isOwnMessage(sock, message) {
@@ -75,6 +99,9 @@ function isReplyingToBot(sock, message) {
 
 async function handleMessage(sock, message) {
   try {
+    // Coba cache LID bot dari setiap pesan (termasuk fromMe) sebelum difilter
+    tryCaptureBotLid(sock, message);
+
     if (isOwnMessage(sock, message)) {
       return;
     }
@@ -116,10 +143,13 @@ const mentionedJids = getMentionedJids(message);
       if (jidNum && botIdentityNumbers.has(jidNum)) return true;
       // Cek via raw JID (format LID: 12345:0@lid)
       if (botRawJids.has(jid)) return true;
-      // Cek partial: bagian sebelum ':' atau '@' sama dengan LID bot
+      // Cek partial: bagian sebelum ':' atau '@' sama dengan LID bot (dari cache atau sock)
       const jidBase = jid.split(/[:@]/)[0];
-      const lidBase = String(sock?.user?.lid || "").split(/[:@]/)[0];
-      if (jidBase && lidBase && jidBase === lidBase) return true;
+      const lidSources = [sock?.user?.lid, cachedBotLid].filter(Boolean);
+      for (const lid of lidSources) {
+        const lidBase = String(lid).split(/[:@]/)[0];
+        if (jidBase && lidBase && jidBase === lidBase) return true;
+      }
       return false;
     });
     const isReplyToBot = false;
@@ -128,6 +158,7 @@ const mentionedJids = getMentionedJids(message);
       console.log("[DEBUG] mentionedJids:", mentionedJids);
       console.log("[DEBUG] sock.user.id:", sock?.user?.id);
       console.log("[DEBUG] sock.user.lid:", sock?.user?.lid);
+      console.log("[DEBUG] cachedBotLid:", cachedBotLid);
       console.log("[DEBUG] settings.botNumber:", settings.botNumber);
       console.log("[DEBUG] botIdentityNumbers:", [...botIdentityNumbers]);
       console.log("[DEBUG] botRawJids:", [...botRawJids]);
@@ -202,5 +233,6 @@ module.exports = {
   handleMessage,
   isOwnMessage,
   isReplyingToBot,
-  normalizeJidUser
+  normalizeJidUser,
+  tryCaptureBotLid
 };
