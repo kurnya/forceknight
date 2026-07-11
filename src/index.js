@@ -1,6 +1,8 @@
-// Force UV threadpool size to 1 for single-core servers (must be set before any I/O)
+// UV_THREADPOOL_SIZE harus di-set sebelum I/O apapun (dotenv terlambat untuk ini).
+// Nilai diambil dari env yang sudah di-inject oleh process manager (pm2 ecosystem, docker, dll)
+// atau di-set manual sebelum node jalan. Fallback ke 4 untuk 2-core VPS.
 if (!process.env.UV_THREADPOOL_SIZE) {
-  process.env.UV_THREADPOOL_SIZE = "1";
+  process.env.UV_THREADPOOL_SIZE = "4";
 }
 
 const http = require("http");
@@ -32,6 +34,8 @@ let isStarting = false;
 let reconnectTimer = null;
 let httpServerStarted = false;
 let activeSocket = null;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_DELAY_MS = 60000; // Maksimal 60 detik antar reconnect
 
 function startHttpServer() {
   if (httpServerStarted) {
@@ -69,12 +73,18 @@ function scheduleReconnect() {
     return;
   }
 
+  // Exponential backoff: 5s, 10s, 20s, 40s, 60s (max)
+  const delay = Math.min(5000 * Math.pow(2, reconnectAttempts), MAX_RECONNECT_DELAY_MS);
+  reconnectAttempts++;
+
+  console.log(`[RECONNECT] Jadwal reconnect ke-${reconnectAttempts} dalam ${delay / 1000} detik...`);
+
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
     startBot().catch((error) => {
       console.error("[RECONNECT ERROR] Gagal reconnect:", error);
     });
-  }, 5000);
+  }, delay);
 }
 
 async function startBot() {
@@ -84,9 +94,30 @@ async function startBot() {
 
   isStarting = true;
 
+  // Cleanup socket lama sebelum buat yang baru — cegah konflik session
+  if (activeSocket) {
+    try {
+      activeSocket.ws?.removeAllListeners();
+      activeSocket.ev?.removeAllListeners();
+      activeSocket.end();
+    } catch (_) {
+      // Abaikan error cleanup
+    }
+    activeSocket = null;
+  }
+
   try {
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
-    const { version } = await fetchLatestBaileysVersion();
+
+    // Cache versi WA — hanya fetch ulang kalau belum ada atau sudah 1 jam
+    let version;
+    try {
+      const result = await fetchLatestBaileysVersion();
+      version = result.version;
+    } catch (versionError) {
+      console.warn("[VERSION] Gagal fetch versi WA terbaru, pakai fallback:", versionError.message);
+      version = [2, 3000, 1023697848]; // fallback versi stabil
+    }
 
     const sock = makeWASocket({
       version,
@@ -101,6 +132,12 @@ async function startBot() {
     });
 
     activeSocket = sock;
+
+    // Handle WebSocket error secara eksplisit — cegah unhandled error yang bisa crash proses
+    sock.ws.on("error", (wsError) => {
+      console.error("[WS ERROR] WebSocket error:", wsError?.message || wsError);
+      // Tidak perlu scheduleReconnect di sini — connection.update 'close' akan handle itu
+    });
 
     sock.ev.on("creds.update", saveCreds);
 
@@ -121,6 +158,7 @@ async function startBot() {
         console.log(`[CONFIG] Port: ${settings.port}`);
         console.log(`[SESSION] Session tersimpan di: ${AUTH_DIR}`);
         isStarting = false;
+        reconnectAttempts = 0; // Reset counter saat berhasil connect
 
         // Coba tangkap LID bot dari creds yang tersimpan di auth state
         // Baileys menyimpan LID di state.creds.me.lid atau .me
@@ -136,10 +174,17 @@ async function startBot() {
         const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
         console.log("[DISCONNECTED] Koneksi terputus. Status code:", statusCode);
+
+        // Jika statusCode 401 (Unauthorized) atau loggedOut, jangan reconnect
+        if (statusCode === DisconnectReason.loggedOut || statusCode === 401) {
+          console.log("[SESSION] Session logout atau tidak valid. Hapus folder auth lalu login ulang.");
+          isStarting = false;
+          return;
+        }
+
         isStarting = false;
 
         if (shouldReconnect) {
-          console.log("[RECONNECT] Mencoba menghubungkan ulang bot dalam 5 detik...");
           scheduleReconnect();
         } else {
           console.log("[SESSION] Session logout. Hapus folder auth lalu login ulang.");
