@@ -1,6 +1,4 @@
 // UV_THREADPOOL_SIZE harus di-set sebelum I/O apapun (dotenv terlambat untuk ini).
-// Nilai diambil dari env yang sudah di-inject oleh process manager (pm2 ecosystem, docker, dll)
-// atau di-set manual sebelum node jalan. Fallback ke 4 untuk 2-core VPS.
 if (!process.env.UV_THREADPOOL_SIZE) {
   process.env.UV_THREADPOOL_SIZE = "4";
 }
@@ -10,6 +8,7 @@ const path = require("path");
 const {
   default: makeWASocket,
   DisconnectReason,
+  Browsers,
   fetchLatestBaileysVersion,
   useMultiFileAuthState
 } = require("@whiskeysockets/baileys");
@@ -35,174 +34,232 @@ let reconnectTimer = null;
 let httpServerStarted = false;
 let activeSocket = null;
 let reconnectAttempts = 0;
-const MAX_RECONNECT_DELAY_MS = 60000; // Maksimal 60 detik antar reconnect
+
+// Batas delay reconnect: 60 detik maksimal
+const MAX_RECONNECT_DELAY_MS = 60000;
+
+// Status codes yang TIDAK boleh reconnect
+const NO_RECONNECT_CODES = new Set([
+  DisconnectReason.loggedOut,   // 401 — session di-logout dari HP
+  DisconnectReason.forbidden,   // 403 — akun diblokir WA
+  DisconnectReason.badSession,  // 500 — file auth corrupt
+]);
+
+// Status codes yang butuh delay lebih panjang sebelum reconnect
+const SLOW_RECONNECT_CODES = new Set([
+  DisconnectReason.connectionReplaced, // 440 — ada session lain yang aktif
+  DisconnectReason.unavailableService, // 503 — WA server down
+]);
+
+// ─── HTTP Server ──────────────────────────────────────────────────────────────
 
 function startHttpServer() {
-  if (httpServerStarted) {
-    return;
-  }
+  if (httpServerStarted) return;
 
-  const server = http.createServer((request, response) => {
-    response.writeHead(200, { "Content-Type": "application/json" });
-    response.end(
-      JSON.stringify({
-        status: "ok",
-        service: "whatsapp-bot"
-      })
-    );
+  const server = http.createServer((req, res) => {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      status: "ok",
+      service: "whatsapp-bot",
+      connected: activeSocket?.user != null,
+      uptime: Math.floor(process.uptime())
+    }));
   });
 
   server.listen(settings.port, () => {
     console.log(`[HTTP] Server aktif di port ${settings.port}`);
   });
 
-  server.on("error", (error) => {
-    if (error.code === "EADDRINUSE") {
+  server.on("error", (err) => {
+    if (err.code === "EADDRINUSE") {
       console.error(`[HTTP ERROR] Port ${settings.port} sedang dipakai proses lain.`);
       return;
     }
-
-    console.error("[HTTP ERROR] Gagal menjalankan HTTP server:", error);
+    console.error("[HTTP ERROR]", err.message);
   });
 
   httpServerStarted = true;
 }
 
-function scheduleReconnect() {
-  if (reconnectTimer) {
-    return;
+// ─── Reconnect Logic ──────────────────────────────────────────────────────────
+
+function scheduleReconnect(forceSlow = false) {
+  if (reconnectTimer) return;
+
+  if (forceSlow) {
+    // Untuk connectionReplaced / unavailableService — mulai dari delay ke-3
+    reconnectAttempts = Math.max(reconnectAttempts, 3);
   }
 
-  // Exponential backoff: 5s, 10s, 20s, 40s, 60s (max)
+  // Exponential backoff: 5s → 10s → 20s → 40s → 60s (cap)
   const delay = Math.min(5000 * Math.pow(2, reconnectAttempts), MAX_RECONNECT_DELAY_MS);
   reconnectAttempts++;
 
-  console.log(`[RECONNECT] Jadwal reconnect ke-${reconnectAttempts} dalam ${delay / 1000} detik...`);
+  console.log(`[RECONNECT] Percobaan ke-${reconnectAttempts} dalam ${delay / 1000}s...`);
 
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
-    startBot().catch((error) => {
-      console.error("[RECONNECT ERROR] Gagal reconnect:", error);
+    startBot().catch((err) => {
+      console.error("[RECONNECT ERROR]", err.message);
+      scheduleReconnect();
     });
   }, delay);
 }
 
-async function startBot() {
-  if (isStarting) {
-    return;
+function cancelReconnect() {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
   }
+}
 
+// ─── Socket Cleanup ───────────────────────────────────────────────────────────
+
+function destroySocket(sock) {
+  if (!sock) return;
+  try {
+    sock.ws?.removeAllListeners();
+    sock.ev?.removeAllListeners();
+    sock.end();
+  } catch (_) {
+    // abaikan error saat cleanup
+  }
+}
+
+// ─── Bot Start ────────────────────────────────────────────────────────────────
+
+async function startBot() {
+  if (isStarting) return;
   isStarting = true;
 
-  // Cleanup socket lama sebelum buat yang baru — cegah konflik session
-  if (activeSocket) {
-    try {
-      activeSocket.ws?.removeAllListeners();
-      activeSocket.ev?.removeAllListeners();
-      activeSocket.end();
-    } catch (_) {
-      // Abaikan error cleanup
-    }
-    activeSocket = null;
-  }
+  // Cleanup socket lama dulu — cegah memory leak dan session conflict
+  destroySocket(activeSocket);
+  activeSocket = null;
 
   try {
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
 
-    // Cache versi WA — hanya fetch ulang kalau belum ada atau sudah 1 jam
     let version;
     try {
       const result = await fetchLatestBaileysVersion();
       version = result.version;
-    } catch (versionError) {
-      console.warn("[VERSION] Gagal fetch versi WA terbaru, pakai fallback:", versionError.message);
-      version = [2, 3000, 1023697848]; // fallback versi stabil
+    } catch (err) {
+      console.warn("[VERSION] Gagal fetch versi WA, pakai fallback:", err.message);
+      version = [2, 3000, 1023697848];
     }
 
     const sock = makeWASocket({
       version,
       auth: state,
       logger: P({ level: "silent" }),
-      browser: ["Fuuka Bot", "Chrome", "1.0.0"],
+
+      // Fingerprint resmi WA Web — jauh lebih stable daripada custom browser string
+      browser: Browsers.appropriate("Chrome"),
+
       keepAliveIntervalMs: settings.whatsappKeepAliveMs,
       connectTimeoutMs: settings.whatsappConnectTimeoutMs,
       defaultQueryTimeoutMs: settings.whatsappDefaultQueryTimeoutMs,
+
       markOnlineOnConnect: false,
-      printQRInTerminal: false
+      printQRInTerminal: false,
+
+      // Matikan fitur yang tidak perlu — kurangi traffic ke WA server
+      syncFullHistory: false,
+      generateHighQualityLinkPreview: false,
+
+      // Pastikan init queries jalan untuk stabilitas session jangka panjang
+      fireInitQueries: true,
+
+      // Retry decode pesan yang gagal — cegah crash karena pesan corrupt
+      retryRequestDelayMs: 2000,
     });
 
     activeSocket = sock;
 
-    // Handle WebSocket error secara eksplisit — cegah unhandled error yang bisa crash proses
-    sock.ws.on("error", (wsError) => {
-      console.error("[WS ERROR] WebSocket error:", wsError?.message || wsError);
-      // Tidak perlu scheduleReconnect di sini — connection.update 'close' akan handle itu
+    // ── Tangkap WebSocket error — cegah unhandled rejection ──
+    sock.ws.on("error", (err) => {
+      console.error("[WS ERROR]", err?.message || err);
+      // connection.update 'close' akan trigger reconnect — tidak perlu di sini
     });
 
     sock.ev.on("creds.update", saveCreds);
 
+    // ── Connection state handler ──
     sock.ev.on("connection.update", async (update) => {
       const { connection, lastDisconnect, qr } = update;
 
       if (qr) {
-        console.log("[QR] QR code berhasil dibuat. Silakan scan dari WhatsApp.");
+        console.log("[QR] Scan QR code berikut dari WhatsApp:");
         qrcode.generate(qr, { small: true });
-        console.log(`[QR LINK] Buka link ini kalau QR di console terlalu besar: https://quickchart.io/qr?size=260&text=${encodeURIComponent(qr)}`);
+        console.log(`[QR LINK] https://quickchart.io/qr?size=260&text=${encodeURIComponent(qr)}`);
       }
 
       if (connection === "open") {
-        console.log("[CONNECTED] Bot berhasil terhubung ke WhatsApp.");
-        console.log(`[BOT INFO] User ID: ${sock.user?.id}`);
-        console.log(`[BOT INFO] LID: ${sock.user?.lid || "(tidak ada)"}`);
-        console.log(`[CONFIG] Prefix aktif: ${settings.prefix}`);
-        console.log(`[CONFIG] Port: ${settings.port}`);
-        console.log(`[SESSION] Session tersimpan di: ${AUTH_DIR}`);
         isStarting = false;
-        reconnectAttempts = 0; // Reset counter saat berhasil connect
+        reconnectAttempts = 0;
+        cancelReconnect();
 
-        // Coba tangkap LID bot dari creds yang tersimpan di auth state
-        // Baileys menyimpan LID di state.creds.me.lid atau .me
+        console.log(`[CONNECTED] ${new Date().toISOString()} — Bot terhubung ke WhatsApp`);
+        console.log(`[BOT INFO] ID: ${sock.user?.id} | LID: ${sock.user?.lid || "-"}`);
+
+        // Tangkap LID dari creds
         const me = state?.creds?.me;
         if (me?.lid) {
           tryCaptureBotLid(sock, { key: { fromMe: true, participant: me.lid }, _fromCreds: true });
-          console.log(`[BOT INFO] LID dari creds: ${me.lid}`);
         }
       }
 
       if (connection === "close") {
+        isStarting = false;
+
         const statusCode = lastDisconnect?.error?.output?.statusCode;
-        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+        const errMsg = lastDisconnect?.error?.message || "";
+        const isStreamError = errMsg.toLowerCase().includes("stream errored");
 
-        console.log("[DISCONNECTED] Koneksi terputus. Status code:", statusCode);
+        console.log(`[DISCONNECTED] ${new Date().toISOString()} — Code: ${statusCode} | ${errMsg || "no message"}`);
 
-        // Jika statusCode 401 (Unauthorized) atau loggedOut, jangan reconnect
-        if (statusCode === DisconnectReason.loggedOut || statusCode === 401) {
-          console.log("[SESSION] Session logout atau tidak valid. Hapus folder auth lalu login ulang.");
-          isStarting = false;
+        // ── Status yang tidak boleh reconnect ──
+        if (NO_RECONNECT_CODES.has(statusCode)) {
+          if (statusCode === DisconnectReason.badSession) {
+            console.error("[BAD SESSION] File auth corrupt. Hapus folder 'auth' lalu scan ulang QR.");
+          } else if (statusCode === DisconnectReason.forbidden) {
+            console.error("[FORBIDDEN] Akun diblokir oleh WhatsApp.");
+          } else {
+            console.log("[LOGOUT] Session logout. Hapus folder 'auth' lalu scan ulang QR.");
+          }
+          return; // berhenti total
+        }
+
+        // ── restartRequired (515) — WA minta bot restart session ──
+        // Ini normal terjadi setiap beberapa jam, bukan error
+        if (statusCode === DisconnectReason.restartRequired) {
+          console.log("[RESTART REQUIRED] WA meminta restart session. Reconnect segera...");
+          reconnectAttempts = 0; // reset agar langsung reconnect tanpa delay panjang
+          scheduleReconnect();
           return;
         }
 
-        isStarting = false;
-
-        if (shouldReconnect) {
-          scheduleReconnect();
-        } else {
-          console.log("[SESSION] Session logout. Hapus folder auth lalu login ulang.");
+        // ── connectionReplaced / unavailableService / stream error ──
+        // Tunggu lebih lama — ada session lain aktif atau server WA sedang down
+        if (SLOW_RECONNECT_CODES.has(statusCode) || isStreamError) {
+          console.log("[SLOW RECONNECT] Menunggu lebih lama sebelum reconnect...");
+          scheduleReconnect(true); // forceSlow = true
+          return;
         }
+
+        // ── Semua error lainnya — reconnect normal dengan backoff ──
+        scheduleReconnect();
       }
     });
 
+    // ── Message handler ──
     sock.ev.on("messages.upsert", async ({ messages }) => {
       const [message] = messages || [];
-
-      if (!message) {
-        return;
-      }
-
+      if (!message) return;
       await handleMessage(sock, message);
     });
 
-    // Tangkap LID bot dari event participant grup
+    // ── Tangkap LID bot dari event grup ──
     sock.ev.on("group-participants.update", ({ participants }) => {
       if (!participants) return;
       tryCaptureBotLid(sock, {
@@ -210,13 +267,15 @@ async function startBot() {
         _groupParticipants: participants
       });
     });
-  } catch (error) {
-    console.error("[START ERROR] Gagal menjalankan bot:", error);
-    console.log("[RETRY] Mencoba restart bot dalam 5 detik...");
+
+  } catch (err) {
+    console.error("[START ERROR]", err.message);
     isStarting = false;
     scheduleReconnect();
   }
 }
+
+// ─── Bootstrap ────────────────────────────────────────────────────────────────
 
 startHttpServer();
 startTempCleanupScheduler(settings);
@@ -225,31 +284,23 @@ process.on("unhandledRejection", (reason) => {
   console.error("[UNHANDLED REJECTION]", reason);
 });
 
-process.on("uncaughtException", (error) => {
-  console.error("[UNCAUGHT EXCEPTION]", error);
+process.on("uncaughtException", (err) => {
+  console.error("[UNCAUGHT EXCEPTION]", err);
+  // Jangan crash — biarkan reconnect logic yang handle
 });
 
 async function gracefulShutdown(signal) {
-  console.log(`[SHUTDOWN] Received ${signal}, shutting down gracefully...`);
+  console.log(`[SHUTDOWN] ${signal} diterima. Menutup bot...`);
+  cancelReconnect();
   drainMediaQueue();
-
-  if (activeSocket) {
-    try {
-      activeSocket.end();
-    } catch (_error) {
-      // Ignore close errors during shutdown
-    }
-  }
+  destroySocket(activeSocket);
 
   setTimeout(() => {
-    console.log("[SHUTDOWN] Force exit after timeout.");
-    process.exit(1);
-  }, 5000).unref?.();
+    process.exit(0);
+  }, 3000).unref?.();
 }
 
 process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 
-startBot().catch((error) => {
-  console.error("[FATAL] Bot gagal dijalankan:", error);
-});
+startBot();
