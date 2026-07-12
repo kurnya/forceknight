@@ -18,13 +18,37 @@ for (const command of registeredCommands) {
   }
 }
 
-// Cache untuk menyimpan LID bot yang ditemukan dari pesan grup
+// Cache LID bot — diisi dari berbagai sumber, manapun yang lebih dulu tersedia
 let cachedBotLid = null;
 
 function normalizeJidUser(value) {
   return String(value || "")
     .split(/[:@]/)[0]
     .replace(/\D/g, "");
+}
+
+/**
+ * Set cachedBotLid dari luar (dipanggil dari index.js saat creds.update atau connection open).
+ * Sumber yang valid: creds.me.lid, sock.user.lid, atau participant @lid dari pesan fromMe.
+ */
+function setBotLid(lid) {
+  if (!lid || cachedBotLid) return;
+  // Validasi: harus berformat angka@lid atau angka:0@lid
+  const normalized = String(lid).trim();
+  if (!normalized.includes("@lid")) return;
+
+  cachedBotLid = normalized;
+  console.log(`[BOT LID] LID bot tersimpan: ${cachedBotLid}`);
+}
+
+/**
+ * Reset cachedBotLid — dipanggil dari index.js saat session baru (auth ulang).
+ */
+function resetBotLid() {
+  if (cachedBotLid) {
+    console.log(`[BOT LID] Reset LID cache (auth ulang).`);
+  }
+  cachedBotLid = null;
 }
 
 function getBotIdentityNumbers(sock) {
@@ -42,28 +66,23 @@ function getBotIdentityNumbers(sock) {
 function getBotRawJids(sock) {
   const rawJids = new Set();
   if (sock?.user?.id) rawJids.add(sock.user.id.split(":")[0] + "@s.whatsapp.net");
-  if (sock?.user?.id) rawJids.add(sock.user.id); // full JID dengan device suffix
-  if (sock?.user?.lid) rawJids.add(sock.user.lid); // LID dari sock (kalau ada)
-  if (cachedBotLid) rawJids.add(cachedBotLid); // LID yang sudah dicache
+  if (sock?.user?.id) rawJids.add(sock.user.id);
+  if (sock?.user?.lid) rawJids.add(sock.user.lid);
+  if (cachedBotLid) rawJids.add(cachedBotLid);
   return rawJids;
 }
 
 /**
- * Coba ekstrak dan cache LID bot dari berbagai sumber:
- * 1. Creds saat koneksi open (state.creds.me.lid)
- * 2. Participant pesan fromMe — paling akurat, langsung dari pesan bot sendiri
+ * Coba tangkap LID dari pesan masuk sebagai fallback terakhir.
+ * Dipanggil untuk setiap pesan — kalau cachedBotLid sudah terisi, langsung skip.
  */
 function tryCaptureBotLid(sock, message) {
-  if (cachedBotLid) return; // sudah punya cache, skip
+  if (cachedBotLid) return;
 
+  // Fallback: tangkap dari participant pesan fromMe di grup (format @lid)
   const participant = message.key?.participant;
-  if (!participant) return;
-
-  // Sumber 1 & 2: participant harus berformat @lid
-  if (message.key?.fromMe && participant.endsWith("@lid")) {
-    cachedBotLid = participant;
-    const src = message._fromCreds ? "creds" : "participant fromMe";
-    console.log(`[BOT LID] LID bot berhasil dicache dari ${src}:`, cachedBotLid);
+  if (message.key?.fromMe && participant?.endsWith("@lid")) {
+    setBotLid(participant);
   }
 }
 
@@ -134,36 +153,27 @@ async function handleMessage(sock, message) {
     const hasPrefix = messageText.startsWith(settings.prefix);
     const normalizedMessageText = messageText.toLowerCase();
     const plainCommandName = normalizedMessageText.split(/\s+/)[0];
-const mentionedJids = getMentionedJids(message);
+    const mentionedJids = getMentionedJids(message);
     const botIdentityNumbers = getBotIdentityNumbers(sock);
     const botRawJids = getBotRawJids(sock);
+
     const isBotMentioned = mentionedJids.length > 0 && mentionedJids.some((jid) => {
-      // Cek via normalized number (format normal: 628xxx@s.whatsapp.net)
+      // Cek via normalized number — format normal: 628xxx@s.whatsapp.net
       const jidNum = normalizeJidUser(jid);
       if (jidNum && botIdentityNumbers.has(jidNum)) return true;
-      // Cek via raw JID (format LID: 12345:0@lid)
+      // Cek via raw JID — termasuk format LID penuh: 12345:0@lid
       if (botRawJids.has(jid)) return true;
-      // Cek partial: bagian sebelum ':' atau '@' sama dengan LID bot (dari cache atau sock)
+      // Cek partial LID — bandingkan bagian angka saja sebelum ':' atau '@'
       const jidBase = jid.split(/[:@]/)[0];
-      const lidSources = [sock?.user?.lid, cachedBotLid].filter(Boolean);
-      for (const lid of lidSources) {
-        const lidBase = String(lid).split(/[:@]/)[0];
-        if (jidBase && lidBase && jidBase === lidBase) return true;
+      for (const lid of [sock?.user?.lid, cachedBotLid].filter(Boolean)) {
+        if (jidBase && jidBase === String(lid).split(/[:@]/)[0]) return true;
       }
       return false;
     });
+
     const isReplyToBot = false;
     const quotedText = "";
-    if (mentionedJids.length > 0) {
-      console.log("[DEBUG] mentionedJids:", mentionedJids);
-      console.log("[DEBUG] sock.user.id:", sock?.user?.id);
-      console.log("[DEBUG] sock.user.lid:", sock?.user?.lid);
-      console.log("[DEBUG] cachedBotLid:", cachedBotLid);
-      console.log("[DEBUG] settings.botNumber:", settings.botNumber);
-      console.log("[DEBUG] botIdentityNumbers:", [...botIdentityNumbers]);
-      console.log("[DEBUG] botRawJids:", [...botRawJids]);
-      console.log("[DEBUG] isBotMentioned:", isBotMentioned);
-    }
+
     const isFuukaWithoutPrefix = fuuka.shouldTriggerWithoutPrefix(normalizedMessageText) || isBotMentioned;
     const isFuukaWithHashPrefix = plainCommandName === `#${fuuka.name}`;
     const isIntroWithoutPrefix = plainCommandName === intro.name;
@@ -234,5 +244,7 @@ module.exports = {
   isOwnMessage,
   isReplyingToBot,
   normalizeJidUser,
-  tryCaptureBotLid
+  tryCaptureBotLid,
+  setBotLid,
+  resetBotLid
 };

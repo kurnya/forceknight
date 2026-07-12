@@ -17,7 +17,7 @@ const qrcode = require("qrcode-terminal");
 const sharp = require("sharp");
 
 const settings = require("./config/settings");
-const { handleMessage, tryCaptureBotLid } = require("./handlers/messageHandler");
+const { handleMessage, tryCaptureBotLid, setBotLid, resetBotLid } = require("./handlers/messageHandler");
 const { startTempCleanupScheduler } = require("./utils/tempCleanup");
 const { configureMediaQueue, drainMediaQueue } = require("./utils/mediaQueue");
 
@@ -136,6 +136,9 @@ async function startBot() {
   destroySocket(activeSocket);
   activeSocket = null;
 
+  // Reset LID cache — LID lama tidak boleh bocor ke session baru
+  resetBotLid();
+
   try {
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
 
@@ -147,6 +150,11 @@ async function startBot() {
       console.warn("[VERSION] Gagal fetch versi WA, pakai fallback:", err.message);
       version = [2, 3000, 1023697848];
     }
+
+    // Cache pesan untuk keperluan retry decrypt (Bad MAC / session mismatch)
+    // Dibatasi 200 entri agar tidak bocor memory
+    const msgCache = new Map();
+    const MSG_CACHE_LIMIT = 200;
 
     const sock = makeWASocket({
       version,
@@ -172,6 +180,13 @@ async function startBot() {
 
       // Retry decode pesan yang gagal — cegah crash karena pesan corrupt
       retryRequestDelayMs: 2000,
+
+      // Callback untuk retry pesan Bad MAC / session mismatch setelah auth ulang.
+      // Baileys memanggil ini saat perlu re-request konten pesan yang gagal didekripsi.
+      getMessage: async (key) => {
+        const cached = msgCache.get(key.id);
+        return cached?.message || undefined;
+      },
     });
 
     activeSocket = sock;
@@ -182,7 +197,14 @@ async function startBot() {
       // connection.update 'close' akan trigger reconnect — tidak perlu di sini
     });
 
-    sock.ev.on("creds.update", saveCreds);
+    // ── Simpan creds setiap update + tangkap LID dari creds.me sesegera mungkin ──
+    sock.ev.on("creds.update", () => {
+      saveCreds();
+      // creds.me.lid terisi setelah Baileys terima info akun dari server WA
+      // Ini sumber LID paling cepat — jauh sebelum pesan fromMe pertama datang
+      const lid = state?.creds?.me?.lid;
+      if (lid) setBotLid(lid);
+    });
 
     // ── Connection state handler ──
     sock.ev.on("connection.update", async (update) => {
@@ -202,10 +224,19 @@ async function startBot() {
         console.log(`[CONNECTED] ${new Date().toISOString()} — Bot terhubung ke WhatsApp`);
         console.log(`[BOT INFO] ID: ${sock.user?.id} | LID: ${sock.user?.lid || "-"}`);
 
-        // Tangkap LID dari creds
-        const me = state?.creds?.me;
-        if (me?.lid) {
-          tryCaptureBotLid(sock, { key: { fromMe: true, participant: me.lid }, _fromCreds: true });
+        // Tangkap LID dari semua sumber yang tersedia saat connect
+        // Prioritas: sock.user.lid > creds.me.lid > creds.me (object langsung)
+        const lid =
+          sock.user?.lid ||
+          state?.creds?.me?.lid ||
+          (typeof state?.creds?.me === "string" && state.creds.me.endsWith("@lid")
+            ? state.creds.me
+            : null);
+
+        if (lid) {
+          setBotLid(lid);
+        } else {
+          console.warn("[BOT LID] LID tidak tersedia saat connect. Akan dicoba dari pesan pertama.");
         }
       }
 
@@ -253,20 +284,45 @@ async function startBot() {
     });
 
     // ── Message handler ──
-    sock.ev.on("messages.upsert", async ({ messages }) => {
+    sock.ev.on("messages.upsert", async ({ messages, type }) => {
+      for (const message of messages) {
+        // Simpan ke cache untuk keperluan retry decrypt
+        if (message.key?.id && message.message) {
+          if (msgCache.size >= MSG_CACHE_LIMIT) {
+            // Hapus entri paling lama (FIFO)
+            const firstKey = msgCache.keys().next().value;
+            msgCache.delete(firstKey);
+          }
+          msgCache.set(message.key.id, message);
+        }
+      }
+
+      // Hanya proses pesan baru (type 'notify'), bukan history sync
+      if (type !== "notify") return;
+
       const [message] = messages || [];
       if (!message) return;
       await handleMessage(sock, message);
     });
 
-    // ── Tangkap LID bot dari event grup ──
-    sock.ev.on("group-participants.update", ({ participants }) => {
-      if (!participants) return;
-      tryCaptureBotLid(sock, {
-        key: { fromMe: false, participant: null },
-        _groupParticipants: participants
-      });
+    // ── Handle retry pesan yang gagal didekripsi (Bad MAC) ──
+    // Baileys otomatis re-request pesan dan memanggil ini saat berhasil
+    sock.ev.on("messages.update", (updates) => {
+      for (const update of updates) {
+        if (update.update?.message && update.key?.id) {
+          // Update cache dengan konten pesan yang baru berhasil didekripsi
+          const existing = msgCache.get(update.key.id);
+          if (existing) {
+            msgCache.set(update.key.id, { ...existing, message: update.update.message });
+          }
+        }
+      }
     });
+
+    // ── Tangkap LID bot dari event grup sebagai fallback ──
+    // Tidak bisa dipakai langsung karena cachedBotLid ada di messageHandler scope
+    // tryCaptureBotLid dari pesan fromMe sudah cukup sebagai fallback
+
 
   } catch (err) {
     console.error("[START ERROR]", err.message);
