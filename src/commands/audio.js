@@ -177,8 +177,7 @@ async function getYoutubeInfo(url, cookiePath) {
     dumpSingleJson: true,
     skipDownload: true,
     noCheckFormats: true,           // skip format check saat fetch info
-    ignoreNoFormatsError: true,     // abaikan error jika format tidak ditemukan saat fetch info
-    extractorArgs: "youtube:player_client=android,web"
+    ignoreNoFormatsError: true      // abaikan error jika format tidak ditemukan saat fetch info
   });
 }
 
@@ -198,8 +197,7 @@ async function downloadYoutubeAudio(url, cookiePath) {
       output: outputTemplate,
       noPostOverwrites: true,
       maxFilesize: settings.audioMaxDownloadSize,
-      concurrentFragments: 1,
-      extractorArgs: "youtube:player_client=android,web"
+      concurrentFragments: 1
       // TIDAK pakai extractAudio/audioFormat — yt-dlp tidak perlu ffprobe
     });
 
