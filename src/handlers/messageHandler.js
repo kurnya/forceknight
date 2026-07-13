@@ -176,7 +176,28 @@ async function handleMessage(sock, message) {
 
     const isFuukaWithoutPrefix = fuuka.shouldTriggerWithoutPrefix(normalizedMessageText) || isBotMentioned;
     const isFuukaWithHashPrefix = plainCommandName === `#${fuuka.name}`;
-    const isIntroWithoutPrefix = plainCommandName === intro.name;
+
+    // Intro trigger — berbagai pola yang didukung:
+    // 1. "intro @member"         — kata pertama adalah "intro", ada mention non-bot
+    // 2. "@member intro"         — ada kata "intro" di mana saja, ada mention non-bot
+    // 3. "@member"               — hanya mention (tanpa kata apapun), ada mention non-bot
+    const nonBotMentions = mentionedJids.filter((jid) => {
+      const jidNum = normalizeJidUser(jid);
+      if (jidNum && getBotIdentityNumbers(sock).has(jidNum)) return false;
+      if (getBotRawJids(sock).has(jid)) return false;
+      const jidBase = jid.split(/[:@]/)[0];
+      for (const lid of [sock?.user?.lid, cachedBotLid].filter(Boolean)) {
+        if (jidBase && jidBase === String(lid).split(/[:@]/)[0]) return false;
+      }
+      return true;
+    });
+    const hasNonBotMention = nonBotMentions.length > 0;
+    const messageHasIntroKeyword = normalizedMessageText.split(/\s+/).includes(intro.name);
+    const isIntroTrigger = hasNonBotMention && !hasPrefix && (
+      messageHasIntroKeyword ||   // ada kata "intro" di mana saja
+      mentionedJids.length === nonBotMentions.length  // semua mention adalah non-bot (tidak ada kata lain = pure mention)
+    ) && !isBotMentioned; // pastikan bukan trigger fuuka
+
     const isHelpWithoutPrefix = normalizedMessageText === help.name;
     const isMenuWithoutPrefix = normalizedMessageText === menu.name;
     const helpTopicKey = help.normalizeTopicKey(messageText.split(/\s+/)[0]);
@@ -187,8 +208,8 @@ async function handleMessage(sock, message) {
         ? messageText.slice(1).trim()
         : isFuukaWithoutPrefix
           ? fuuka.name
-          : isIntroWithoutPrefix && mentionedJids.length
-            ? messageText.trim()
+          : isIntroTrigger
+            ? `${intro.name} ${messageText}`.trim()
             : (isHelpWithoutPrefix || isHelpTopicCode)
               ? `${help.name} ${messageText}`.trim()
               : isMenuWithoutPrefix
