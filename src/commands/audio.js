@@ -220,7 +220,11 @@ async function downloadYoutubeAudio(url, cookiePath) {
     await new Promise((resolve, reject) => {
       const ffmpeg = require("fluent-ffmpeg");
       const ffmpegStatic = require("ffmpeg-static");
-      ffmpeg.setFfmpegPath(ffmpegStatic);
+      
+      // Fallback ke system ffmpeg jika ffmpeg-static terblokir script instalasinya
+      if (ffmpegStatic && require("fs").existsSync(ffmpegStatic)) {
+        ffmpeg.setFfmpegPath(ffmpegStatic);
+      }
 
       let timedOut = false;
       let proc = null;
