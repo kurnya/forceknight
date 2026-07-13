@@ -3,7 +3,6 @@ const fs = require("fs/promises");
 const os = require("os");
 const path = require("path");
 const { execSync } = require("child_process");
-const ffmpegPath = require("ffmpeg-static");
 const { create: createYtDlp } = require("youtube-dl-exec");
 
 const settings = require("../config/settings");
@@ -42,6 +41,44 @@ const ytDlpBinary = resolveYtDlpBinary();
 const ytDlp = ytDlpBinary ? createYtDlp(ytDlpBinary) : require("youtube-dl-exec");
 
 const YOUTUBE_URL_PATTERN = /https?:\/\/(?:www\.|m\.)?(?:youtube\.com|youtu\.be)\/\S+/i;
+
+// Resolve path ffmpeg yang bisa digunakan di sistem ini
+// Urutan prioritas: ffmpeg-static → system ffmpeg (/usr/bin/ffmpeg, dll)
+function resolveFfmpegPath() {
+  const fsSync = require("fs");
+
+  // 1. Coba ffmpeg-static
+  try {
+    const staticPath = require("ffmpeg-static");
+    if (staticPath && fsSync.existsSync(staticPath)) {
+      execSync(`"${staticPath}" -version`, { stdio: "ignore", timeout: 5000 });
+      console.log(`[AUDIO] ffmpeg ditemukan via ffmpeg-static: ${staticPath}`);
+      return staticPath;
+    }
+  } catch {
+    console.warn("[AUDIO] ffmpeg-static tidak kompatibel dengan sistem ini, mencoba system ffmpeg...");
+  }
+
+  // 2. Cari ffmpeg di PATH dan lokasi umum
+  const systemCandidates = [
+    (() => { try { return execSync("which ffmpeg", { stdio: ["pipe", "pipe", "ignore"], timeout: 3000 }).toString().trim(); } catch { return null; } })(),
+    "/usr/bin/ffmpeg",
+    "/usr/local/bin/ffmpeg",
+    "/bin/ffmpeg",
+  ].filter(Boolean);
+
+  for (const candidate of systemCandidates) {
+    try {
+      fsSync.accessSync(candidate, fsSync.constants.X_OK);
+      console.log(`[AUDIO] ffmpeg ditemukan di sistem: ${candidate}`);
+      return candidate;
+    } catch { /* lanjut */ }
+  }
+
+  // 3. Biarkan fluent-ffmpeg cari sendiri di PATH (biasanya works kalau ffmpeg ada di PATH)
+  console.warn("[AUDIO] ffmpeg tidak ditemukan di lokasi manapun. Menyerahkan ke fluent-ffmpeg untuk resolusi otomatis.");
+  return null;
+}
 
 function findYoutubeUrl(args) {
   const joinedArgs = args.join(" ");
@@ -219,17 +256,11 @@ async function downloadYoutubeAudio(url, cookiePath) {
     // Konversi ke mp3 pakai ffmpeg langsung (tidak butuh ffprobe)
     await new Promise((resolve, reject) => {
       const ffmpeg = require("fluent-ffmpeg");
-      const ffmpegStatic = require("ffmpeg-static");
-      
-      // Fallback ke system ffmpeg jika ffmpeg-static rusak (misal di Alpine Linux)
-      if (ffmpegStatic && require("fs").existsSync(ffmpegStatic)) {
-        try {
-          // Tes eksekusi binary
-          require("child_process").execSync(`"${ffmpegStatic}" -version`, { stdio: "ignore" });
-          ffmpeg.setFfmpegPath(ffmpegStatic);
-        } catch {
-          console.warn("[AUDIO] ffmpeg-static tidak bisa dijalankan di sistem ini, menggunakan system ffmpeg.");
-        }
+
+      // Resolusi ffmpeg path: coba ffmpeg-static dulu, fallback ke system ffmpeg
+      const resolvedFfmpegPath = resolveFfmpegPath();
+      if (resolvedFfmpegPath) {
+        ffmpeg.setFfmpegPath(resolvedFfmpegPath);
       }
 
       let timedOut = false;
