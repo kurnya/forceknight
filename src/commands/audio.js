@@ -221,9 +221,15 @@ async function downloadYoutubeAudio(url, cookiePath) {
       const ffmpeg = require("fluent-ffmpeg");
       const ffmpegStatic = require("ffmpeg-static");
       
-      // Fallback ke system ffmpeg jika ffmpeg-static terblokir script instalasinya
+      // Fallback ke system ffmpeg jika ffmpeg-static rusak (misal di Alpine Linux)
       if (ffmpegStatic && require("fs").existsSync(ffmpegStatic)) {
-        ffmpeg.setFfmpegPath(ffmpegStatic);
+        try {
+          // Tes eksekusi binary
+          require("child_process").execSync(`"${ffmpegStatic}" -version`, { stdio: "ignore" });
+          ffmpeg.setFfmpegPath(ffmpegStatic);
+        } catch {
+          console.warn("[AUDIO] ffmpeg-static tidak bisa dijalankan di sistem ini, menggunakan system ffmpeg.");
+        }
       }
 
       let timedOut = false;
