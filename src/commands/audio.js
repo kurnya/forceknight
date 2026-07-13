@@ -175,7 +175,9 @@ async function getYoutubeInfo(url, cookiePath) {
   return ytDlp(url, {
     ...createBaseFlags(cookiePath),
     dumpSingleJson: true,
-    skipDownload: true
+    skipDownload: true,
+    noCheckFormats: true,           // skip format check saat fetch info
+    extractorArgs: "youtube:player_client=tv,web"
   });
 }
 
@@ -314,47 +316,46 @@ module.exports = {
 async function processYoutubeAudioCommand({ sock, message, url }) {
     const cookiePath = await createCookieFile();
 
-    let info;
+    let info = null;
 
     try {
       info = await getYoutubeInfo(url, cookiePath);
     } catch (error) {
       console.error("[AUDIO ERROR] Gagal mengambil info YouTube:", error);
-      const text = isYoutubeBotChallenge(error)
-        ? "YouTube sedang meminta verifikasi anti-bot dari server ini, jadi audio belum bisa diambil. Coba refresh YouTube cookies di server."
-        : isYoutubeDrmProtected(error)
-          ? "Video ini diproteksi DRM dan tidak bisa diunduh~ Coba video lain yaa. (｡•́︿•̀｡)"
-          : isYoutubeUnavailable(error)
-            ? "Video ini tidak tersedia (privat, members only, atau dibatasi umur). Coba video lain yaa."
-            : isYoutubeFormatError(error)
-              ? "YouTube belum memberi format audio yang bisa diunduh dari server ini. Coba refresh cookies YouTube, atau coba link lain."
-              : "Fuuka belum bisa membaca link YouTube itu. Coba link lain yaa.";
 
-      await fs.unlink(cookiePath).catch(() => {});
-      await sock.sendMessage(
-        message.key.remoteJid,
-        { text },
-        { quoted: message }
-      );
-      return;
+      // Error fatal — hentikan proses
+      if (isYoutubeBotChallenge(error) || isYoutubeDrmProtected(error) || isYoutubeUnavailable(error)) {
+        const text = isYoutubeBotChallenge(error)
+          ? "YouTube sedang meminta verifikasi anti-bot. Coba refresh YouTube cookies di server."
+          : isYoutubeDrmProtected(error)
+            ? "Video ini diproteksi DRM dan tidak bisa diunduh~ Coba video lain yaa. (｡•́︿•̀｡)"
+            : "Video ini tidak tersedia (privat, members only, atau dibatasi umur). Coba video lain yaa.";
+        await fs.unlink(cookiePath).catch(() => {});
+        await sock.sendMessage(message.key.remoteJid, { text }, { quoted: message });
+        return;
+      }
+
+      // Format error / error lain — tetap coba download, info tidak tersedia
+      // Bot akan lanjut dengan judul fallback
+      console.warn("[AUDIO] Info gagal diambil, tetap coba download...");
     }
 
-    const title = info.title || "YouTube Audio";
-    const durationSeconds = Number(info.duration || 0);
-
-    if (durationSeconds > settings.audioMaxSeconds) {
-      await fs.unlink(cookiePath).catch(() => {});
-      await sock.sendMessage(
-        message.key.remoteJid,
-        {
-          text: `Audio terlalu panjang (${formatDuration(durationSeconds)}). Maksimal ${formatDuration(settings.audioMaxSeconds)} yaa.`
-        },
-        {
-          quoted: message
-        }
-      );
-      return;
+    // Cek durasi hanya kalau info berhasil diambil
+    if (info) {
+      const durationSeconds = Number(info.duration || 0);
+      if (durationSeconds > settings.audioMaxSeconds) {
+        await fs.unlink(cookiePath).catch(() => {});
+        await sock.sendMessage(
+          message.key.remoteJid,
+          { text: `Audio terlalu panjang (${formatDuration(durationSeconds)}). Maksimal ${formatDuration(settings.audioMaxSeconds)} yaa.` },
+          { quoted: message }
+        );
+        return;
+      }
     }
+
+    const title = info?.title || "YouTube Audio";
+    const durationSeconds = Number(info?.duration || 0);
 
     await sock.sendMessage(
       message.key.remoteJid,
