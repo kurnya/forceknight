@@ -182,13 +182,15 @@ async function downloadYoutubeAudio(url, cookiePath) {
 
   try {
     // Download audio-only tanpa post-processing (tidak butuh ffprobe)
+    // Pakai client tv/mweb sebagai fallback untuk bypass 403 di server hosting
     await ytDlp.exec(url, {
       ...createBaseFlags(cookiePath),
       format: "bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio",
       output: outputTemplate,
       noPostOverwrites: true,
       maxFilesize: settings.audioMaxDownloadSize,
-      concurrentFragments: 1
+      concurrentFragments: 1,
+      extractorArgs: "youtube:player_client=tv,web"
       // TIDAK pakai extractAudio/audioFormat — yt-dlp tidak perlu ffprobe
     });
 
