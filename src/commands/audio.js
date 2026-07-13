@@ -177,7 +177,8 @@ async function getYoutubeInfo(url, cookiePath) {
     dumpSingleJson: true,
     skipDownload: true,
     noCheckFormats: true,           // skip format check saat fetch info
-    extractorArgs: "youtube:player_client=tv,web"
+    extractorArgs: "youtube:player_client=ios,web",
+    format: "bestaudio/best"        // agar tidak error "Requested format is not available"
   });
 }
 
@@ -200,7 +201,7 @@ async function downloadYoutubeAudio(url, cookiePath) {
       noPostOverwrites: true,
       maxFilesize: settings.audioMaxDownloadSize,
       concurrentFragments: 1,
-      extractorArgs: "youtube:player_client=tv,web"
+      extractorArgs: "youtube:player_client=ios,web"
       // TIDAK pakai extractAudio/audioFormat — yt-dlp tidak perlu ffprobe
     });
 
