@@ -2,11 +2,44 @@ const crypto = require("crypto");
 const fs = require("fs/promises");
 const os = require("os");
 const path = require("path");
+const { execSync } = require("child_process");
 const ffmpegPath = require("ffmpeg-static");
-const ytDlp = require("youtube-dl-exec");
+const { create: createYtDlp } = require("youtube-dl-exec");
 
 const settings = require("../config/settings");
 const { runMediaJob } = require("../utils/mediaQueue");
+
+// Cari binary yt-dlp — coba beberapa lokasi secara berurutan
+function resolveYtDlpBinary() {
+  const candidates = [
+    // 1. Binary yang di-download oleh npm postinstall (lokasi default youtube-dl-exec)
+    path.join(__dirname, "../../node_modules/youtube-dl-exec/bin/yt-dlp"),
+    // 2. System binary (kalau di-install manual di server)
+    "/usr/local/bin/yt-dlp",
+    "/usr/bin/yt-dlp",
+    // 3. Fallback: cari di PATH
+    (() => {
+      try { return execSync("which yt-dlp", { stdio: ["pipe", "pipe", "ignore"] }).toString().trim(); } catch { return null; }
+    })(),
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    try {
+      // Cek apakah file ada dan executable
+      require("fs").accessSync(candidate, require("fs").constants.X_OK);
+      console.log(`[AUDIO] yt-dlp binary ditemukan: ${candidate}`);
+      return candidate;
+    } catch {
+      // Lanjut ke kandidat berikutnya
+    }
+  }
+
+  console.warn("[AUDIO] yt-dlp binary tidak ditemukan di semua lokasi. Audio command mungkin tidak berfungsi.");
+  return null;
+}
+
+const ytDlpBinary = resolveYtDlpBinary();
+const ytDlp = ytDlpBinary ? createYtDlp(ytDlpBinary) : require("youtube-dl-exec");
 
 const YOUTUBE_URL_PATTERN = /https?:\/\/(?:www\.|m\.)?(?:youtube\.com|youtu\.be)\/\S+/i;
 
