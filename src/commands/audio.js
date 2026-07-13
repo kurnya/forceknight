@@ -86,14 +86,22 @@ function formatDuration(seconds) {
 
 function isYoutubeBotChallenge(error) {
   const message = `${error?.message || ""}\n${error?.stderr || ""}`;
-
   return /sign in to confirm|not a bot|confirm you.?re not a bot/i.test(message);
 }
 
 function isYoutubeFormatError(error) {
   const message = `${error?.message || ""}\n${error?.stderr || ""}`;
-
   return /requested format|no video formats|no formats|unsupported url|403 forbidden|http error 403/i.test(message);
+}
+
+function isYoutubeDrmProtected(error) {
+  const message = `${error?.message || ""}\n${error?.stderr || ""}`;
+  return /drm protected|drm-protected/i.test(message);
+}
+
+function isYoutubeUnavailable(error) {
+  const message = `${error?.message || ""}\n${error?.stderr || ""}`;
+  return /video unavailable|private video|members.only|age.restricted|not available/i.test(message);
 }
 
 function toNetscapeCookieLine(cookie) {
@@ -314,19 +322,19 @@ async function processYoutubeAudioCommand({ sock, message, url }) {
       console.error("[AUDIO ERROR] Gagal mengambil info YouTube:", error);
       const text = isYoutubeBotChallenge(error)
         ? "YouTube sedang meminta verifikasi anti-bot dari server ini, jadi audio belum bisa diambil. Coba refresh YouTube cookies di server."
-        : isYoutubeFormatError(error)
-          ? "YouTube belum memberi format audio yang bisa diunduh dari server ini. Coba refresh cookies YouTube, atau coba link lain."
-          : "Fuuka belum bisa membaca link YouTube itu. Coba link lain yaa.";
+        : isYoutubeDrmProtected(error)
+          ? "Video ini diproteksi DRM dan tidak bisa diunduh~ Coba video lain yaa. (｡•́︿•̀｡)"
+          : isYoutubeUnavailable(error)
+            ? "Video ini tidak tersedia (privat, members only, atau dibatasi umur). Coba video lain yaa."
+            : isYoutubeFormatError(error)
+              ? "YouTube belum memberi format audio yang bisa diunduh dari server ini. Coba refresh cookies YouTube, atau coba link lain."
+              : "Fuuka belum bisa membaca link YouTube itu. Coba link lain yaa.";
 
       await fs.unlink(cookiePath).catch(() => {});
       await sock.sendMessage(
         message.key.remoteJid,
-        {
-          text
-        },
-        {
-          quoted: message
-        }
+        { text },
+        { quoted: message }
       );
       return;
     }
@@ -376,9 +384,13 @@ async function processYoutubeAudioCommand({ sock, message, url }) {
       console.error("[AUDIO ERROR] Gagal mengunduh audio YouTube:", error);
       const text = isYoutubeBotChallenge(error)
         ? "YouTube sedang meminta verifikasi anti-bot dari server ini, jadi audio belum bisa diunduh. Coba refresh YouTube cookies di server."
-        : isYoutubeFormatError(error)
-          ? "YouTube belum memberi format audio yang bisa diunduh dari server ini. Coba refresh cookies YouTube, atau coba link lain."
-          : "Maaf, audio YouTube-nya gagal diproses. Coba lagi nanti atau pakai link lain yaa.";
+        : isYoutubeDrmProtected(error)
+          ? "Video ini diproteksi DRM dan tidak bisa diunduh~ Coba video lain yaa. (｡•́︿•̀｡)"
+          : isYoutubeUnavailable(error)
+            ? "Video ini tidak tersedia (privat, members only, atau dibatasi umur). Coba video lain yaa."
+            : isYoutubeFormatError(error)
+              ? "YouTube belum memberi format audio yang bisa diunduh dari server ini. Coba refresh cookies YouTube, atau coba link lain."
+              : "Maaf, audio YouTube-nya gagal diproses. Coba lagi nanti atau pakai link lain yaa.";
 
       await sock.sendMessage(
         message.key.remoteJid,
