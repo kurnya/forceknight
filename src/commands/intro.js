@@ -46,8 +46,15 @@ const memberIntroLines = [
 module.exports = {
   name: "intro",
   description: "Kirim pesan sambutan dan template intro member guild.",
-  execute: async ({ sock, message, mentionedJids = [] }) => {
-    if (!mentionedJids.length) {
+  execute: async ({ sock, message, mentionedJids = [], quotedParticipant = null }) => {
+    // Kumpulkan target: dari mention eksplisit atau dari quoted participant (reply)
+    const targets = mentionedJids.length > 0
+      ? mentionedJids
+      : quotedParticipant
+        ? [quotedParticipant]
+        : [];
+
+    if (!targets.length) {
       return;
     }
 

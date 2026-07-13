@@ -177,10 +177,22 @@ async function handleMessage(sock, message) {
     const isFuukaWithoutPrefix = fuuka.shouldTriggerWithoutPrefix(normalizedMessageText) || isBotMentioned;
     const isFuukaWithHashPrefix = plainCommandName === `#${fuuka.name}`;
 
+    // ── Deteksi reply ke member (bukan Fuuka) + ketik "intro" ──
+    const quotedContext = getQuotedMessageContext(message);
+    const quotedParticipant = quotedContext?.participant || null;
+    const isReplyToMember = Boolean(
+      quotedParticipant &&
+      !getBotIdentityNumbers(sock).has(normalizeJidUser(quotedParticipant)) &&
+      !getBotRawJids(sock).has(quotedParticipant)
+    );
+    // Trigger intro via reply: reply pesan member + teks "intro" (posisi bebas)
+    const isIntroViaReply = isReplyToMember && normalizedMessageText.split(/\s+/).includes(intro.name);
+
     // Intro trigger — berbagai pola yang didukung:
     // 1. "intro @member"         — kata pertama adalah "intro", ada mention non-bot
     // 2. "@member intro"         — ada kata "intro" di mana saja, ada mention non-bot
     // 3. "@member"               — hanya mention (tanpa kata apapun), ada mention non-bot
+    // 4. Reply pesan member + ketik "intro" (posisi bebas)
     const nonBotMentions = mentionedJids.filter((jid) => {
       const jidNum = normalizeJidUser(jid);
       if (jidNum && getBotIdentityNumbers(sock).has(jidNum)) return false;
@@ -193,10 +205,10 @@ async function handleMessage(sock, message) {
     });
     const hasNonBotMention = nonBotMentions.length > 0;
     const messageHasIntroKeyword = normalizedMessageText.split(/\s+/).includes(intro.name);
-    const isIntroTrigger = hasNonBotMention && !hasPrefix && (
-      messageHasIntroKeyword ||   // ada kata "intro" di mana saja
-      mentionedJids.length === nonBotMentions.length  // semua mention adalah non-bot (tidak ada kata lain = pure mention)
-    ) && !isBotMentioned; // pastikan bukan trigger fuuka
+    const isIntroTrigger = !hasPrefix && !isBotMentioned && (
+      isIntroViaReply ||
+      (hasNonBotMention && messageHasIntroKeyword)
+    );
 
     const isHelpWithoutPrefix = normalizedMessageText === help.name;
     const isMenuWithoutPrefix = normalizedMessageText === menu.name;
@@ -253,7 +265,8 @@ async function handleMessage(sock, message) {
       rawText: messageText,
       isBotMentioned,
       isReplyToBot,
-      quotedText
+      quotedText,
+      quotedParticipant  // JID pengirim pesan yang di-reply (untuk intro via reply)
     });
   } catch (error) {
     console.error("[MESSAGE ERROR] Gagal memproses pesan:", error);
