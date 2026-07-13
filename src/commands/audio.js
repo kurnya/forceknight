@@ -185,8 +185,6 @@ async function getYoutubeInfo(url, cookiePath) {
 async function downloadYoutubeAudio(url, cookiePath) {
   const tempId = crypto.randomUUID();
   const outputTemplate = path.join(os.tmpdir(), `youtube-audio-${tempId}.%(ext)s`);
-  const webmPath = path.join(os.tmpdir(), `youtube-audio-${tempId}.webm`);
-  const m4aPath = path.join(os.tmpdir(), `youtube-audio-${tempId}.m4a`);
   const mp3Path = path.join(os.tmpdir(), `youtube-audio-${tempId}.mp3`);
 
   let downloadedPath = null;
@@ -196,7 +194,7 @@ async function downloadYoutubeAudio(url, cookiePath) {
     // Pakai client tv/mweb sebagai fallback untuk bypass 403 di server hosting
     await ytDlp.exec(url, {
       ...createBaseFlags(cookiePath),
-      format: "bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio",
+      format: "bestaudio/best",
       output: outputTemplate,
       noPostOverwrites: true,
       maxFilesize: settings.audioMaxDownloadSize,
@@ -206,7 +204,9 @@ async function downloadYoutubeAudio(url, cookiePath) {
     });
 
     // Cek file mana yang ter-download
-    for (const candidate of [webmPath, m4aPath]) {
+    const extensions = ["webm", "m4a", "mp4", "mkv", "flv", "aac", "ogg", "opus"];
+    for (const ext of extensions) {
+      const candidate = path.join(os.tmpdir(), `youtube-audio-${tempId}.${ext}`);
       try {
         await fs.access(candidate);
         downloadedPath = candidate;
