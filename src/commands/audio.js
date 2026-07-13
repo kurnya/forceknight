@@ -158,7 +158,7 @@ function createBaseFlags(cookiePath) {
   return {
     noPlaylist: true,
     noWarnings: true,
-    noCallHome: true,
+    // noCallHome deprecated di yt-dlp terbaru — dihapus
     cookies: cookiePath || undefined
   };
 }
@@ -174,27 +174,69 @@ async function getYoutubeInfo(url, cookiePath) {
 async function downloadYoutubeAudio(url, cookiePath) {
   const tempId = crypto.randomUUID();
   const outputTemplate = path.join(os.tmpdir(), `youtube-audio-${tempId}.%(ext)s`);
-  const outputPath = path.join(os.tmpdir(), `youtube-audio-${tempId}.mp3`);
+  const webmPath = path.join(os.tmpdir(), `youtube-audio-${tempId}.webm`);
+  const m4aPath = path.join(os.tmpdir(), `youtube-audio-${tempId}.m4a`);
+  const mp3Path = path.join(os.tmpdir(), `youtube-audio-${tempId}.mp3`);
+
+  let downloadedPath = null;
 
   try {
+    // Download audio-only tanpa post-processing (tidak butuh ffprobe)
     await ytDlp.exec(url, {
       ...createBaseFlags(cookiePath),
-      extractAudio: true,
-      audioFormat: "mp3",
-      audioQuality: settings.audioBitrate,
+      format: "bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio",
       output: outputTemplate,
-      ffmpegLocation: ffmpegPath,
+      noPostOverwrites: true,
       maxFilesize: settings.audioMaxDownloadSize,
-      concurrentFragments: 1,
-      postprocessorArgs: "ffmpeg:-threads 1"
+      concurrentFragments: 1
+      // TIDAK pakai extractAudio/audioFormat — yt-dlp tidak perlu ffprobe
     });
 
-    return fs.readFile(outputPath);
+    // Cek file mana yang ter-download
+    for (const candidate of [webmPath, m4aPath]) {
+      try {
+        await fs.access(candidate);
+        downloadedPath = candidate;
+        break;
+      } catch { /* lanjut */ }
+    }
+
+    if (!downloadedPath) {
+      throw new Error("File audio tidak ditemukan setelah download.");
+    }
+
+    // Konversi ke mp3 pakai ffmpeg langsung (tidak butuh ffprobe)
+    await new Promise((resolve, reject) => {
+      const ffmpeg = require("fluent-ffmpeg");
+      const ffmpegStatic = require("ffmpeg-static");
+      ffmpeg.setFfmpegPath(ffmpegStatic);
+
+      let timedOut = false;
+      let proc = null;
+
+      const timeoutId = setTimeout(() => {
+        timedOut = true;
+        try { proc?.kill("SIGKILL"); } catch (_) {}
+        reject(new Error("FFmpeg timeout"));
+      }, settings.ffmpegTimeoutMs);
+
+      proc = ffmpeg(downloadedPath)
+        .outputOptions([
+          `-b:a ${settings.audioBitrate}`,
+          "-threads 1",
+          "-vn"
+        ])
+        .format("mp3")
+        .save(mp3Path)
+        .on("end", () => { clearTimeout(timeoutId); if (!timedOut) resolve(); })
+        .on("error", (err) => { clearTimeout(timeoutId); if (!timedOut) reject(err); });
+    });
+
+    return fs.readFile(mp3Path);
   } finally {
     await Promise.allSettled([
-      fs.unlink(outputPath),
-      fs.unlink(path.join(os.tmpdir(), `youtube-audio-${tempId}.webm`)),
-      fs.unlink(path.join(os.tmpdir(), `youtube-audio-${tempId}.m4a`))
+      downloadedPath ? fs.unlink(downloadedPath) : Promise.resolve(),
+      fs.unlink(mp3Path).catch(() => {})
     ]);
   }
 }
