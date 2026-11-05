@@ -205,8 +205,8 @@ async function startBot() {
 
       if (qr) {
         console.log("[QR] Scan QR berikut dari WhatsApp:");
+        // Jangan kirim data QR ke layanan pihak ketiga — data ini bisa dipakai untuk pairing akun.
         qrcode.generate(qr, { small: true });
-        console.log(`[QR LINK] https://quickchart.io/qr?size=260&text=${encodeURIComponent(qr)}`);
       }
 
       if (connection === "open") {
@@ -283,10 +283,9 @@ async function startBot() {
       // Hanya proses pesan real-time, skip history sync
       if (type !== "notify") return;
 
-      const [message] = messages;
-      if (!message) return;
-
-      await handleMessage(sock, message);
+      // Satu event bisa berisi beberapa pesan (burst / setelah reconnect) — proses semuanya.
+      // handleMessage sudah menangkap error-nya sendiri.
+      await Promise.all(messages.map((message) => handleMessage(sock, message)));
     });
 
     // Update cache saat pesan retry berhasil didekripsi

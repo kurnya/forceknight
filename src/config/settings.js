@@ -72,6 +72,10 @@ const settings = {
   mediaMaxConcurrent: Math.floor(parsePositiveNumber(process.env.MEDIA_MAX_CONCURRENT, 1)),
   mediaQueueLimit: Math.floor(parsePositiveNumber(process.env.MEDIA_QUEUE_LIMIT, 5)),
   ffmpegTimeoutMs: parsePositiveNumber(process.env.FFMPEG_TIMEOUT_MS, 120000),
+  // Batas ukuran media yang boleh diunduh ke RAM (default 15 MB)
+  mediaMaxBytes: Math.floor(parsePositiveNumber(process.env.MEDIA_MAX_BYTES, 15 * 1024 * 1024)),
+  // Jeda minimal antar command media (stiker/gambar/audio) per pengirim
+  mediaUserCooldownMs: parsePositiveNumber(process.env.MEDIA_USER_COOLDOWN_MS, 10000),
   sharpConcurrency: Math.floor(parsePositiveNumber(process.env.SHARP_CONCURRENCY, 1))
 };
 

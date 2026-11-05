@@ -82,6 +82,36 @@ async function runMediaJob(jobFn) {
   }
 }
 
+// ── Cooldown per pengirim ────────────────────────────────────────────────────
+// Mencegah satu user memenuhi antrean global sendirian.
+const userLastJobAt = new Map();
+const USER_COOLDOWN_SWEEP_LIMIT = 500;
+
+/**
+ * Cek & tandai cooldown media untuk seorang pengirim.
+ * @returns {number} 0 kalau boleh lanjut, atau sisa detik tunggu.
+ */
+function takeUserMediaSlot(userId, cooldownMs) {
+  if (!userId || !cooldownMs) return 0;
+
+  const now = Date.now();
+  const last = userLastJobAt.get(userId) || 0;
+  const remainingMs = cooldownMs - (now - last);
+
+  if (remainingMs > 0) {
+    return Math.ceil(remainingMs / 1000);
+  }
+
+  if (userLastJobAt.size >= USER_COOLDOWN_SWEEP_LIMIT) {
+    for (const [key, timestamp] of userLastJobAt) {
+      if (now - timestamp > cooldownMs) userLastJobAt.delete(key);
+    }
+  }
+
+  userLastJobAt.set(userId, now);
+  return 0;
+}
+
 /**
  * Reject all waiting jobs (e.g., on graceful shutdown).
  */
@@ -98,5 +128,6 @@ module.exports = {
   configureMediaQueue,
   getMediaQueueStatus,
   runMediaJob,
-  drainMediaQueue
+  drainMediaQueue,
+  takeUserMediaSlot
 };

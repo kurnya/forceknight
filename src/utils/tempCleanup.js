@@ -2,8 +2,18 @@ const fs = require("fs/promises");
 const os = require("os");
 const path = require("path");
 
-const YOUTUBE_AUDIO_PREFIX = "youtube-audio-";
-const YOUTUBE_AUDIO_EXTENSIONS = new Set([".m4a", ".mp3"]);
+// Semua file temp yang dibuat bot: audio YouTube (termasuk .part dari yt-dlp),
+// file cookies sementara, dan file kerja stiker video.
+const TEMP_FILE_RULES = [
+  { prefix: "youtube-audio-", extensions: new Set([".m4a", ".mp3", ".webm", ".mp4", ".mkv", ".flv", ".aac", ".ogg", ".opus", ".part", ".ytdl"]) },
+  { prefix: "youtube-cookies-", extensions: new Set([".txt"]) },
+  { prefix: "stiker-", extensions: new Set([".mp4", ".webp"]) }
+];
+
+function isBotTempFile(fileName) {
+  const ext = path.extname(fileName);
+  return TEMP_FILE_RULES.some((rule) => fileName.startsWith(rule.prefix) && rule.extensions.has(ext));
+}
 
 async function cleanupYoutubeAudioTempFiles(maxAgeMs) {
   const tempDir = os.tmpdir();
@@ -20,11 +30,7 @@ async function cleanupYoutubeAudioTempFiles(maxAgeMs) {
   }
 
   for (const entry of entries) {
-    if (
-      !entry.isFile() ||
-      !entry.name.startsWith(YOUTUBE_AUDIO_PREFIX) ||
-      !YOUTUBE_AUDIO_EXTENSIONS.has(path.extname(entry.name))
-    ) {
+    if (!entry.isFile() || !isBotTempFile(entry.name)) {
       continue;
     }
 
@@ -58,7 +64,7 @@ function startTempCleanupScheduler(settings) {
     const deletedCount = await cleanupYoutubeAudioTempFiles(settings.tempCleanupMaxAgeMs);
 
     if (deletedCount > 0) {
-      console.log(`[CLEANUP] Menghapus ${deletedCount} file audio temp lama.`);
+      console.log(`[CLEANUP] Menghapus ${deletedCount} file temp lama.`);
     }
   };
 

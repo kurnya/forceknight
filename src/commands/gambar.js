@@ -3,7 +3,8 @@ const P = require("pino");
 const sharp = require("sharp");
 
 const { getStickerSourceMessage } = require("../utils/messageParser");
-const { runMediaJob } = require("../utils/mediaQueue");
+const settings = require("../config/settings");
+const { runMediaJob, takeUserMediaSlot } = require("../utils/mediaQueue");
 
 async function convertStaticStickerToImage(stickerBuffer) {
   return sharp(stickerBuffer)
@@ -37,6 +38,25 @@ module.exports = {
         {
           quoted: message
         }
+      );
+      return;
+    }
+
+    if (stickerSource.fileLength > settings.mediaMaxBytes) {
+      await sock.sendMessage(
+        message.key.remoteJid,
+        { text: "Stikernya kebesaran, Fuuka nggak bisa proses yang ini yaa~ (｡•́︿•̀｡)" },
+        { quoted: message }
+      );
+      return;
+    }
+
+    const waitSeconds = takeUserMediaSlot(message.key.participant || message.key.remoteJid, settings.mediaUserCooldownMs);
+    if (waitSeconds) {
+      await sock.sendMessage(
+        message.key.remoteJid,
+        { text: `Sabar yaa~ tunggu ${waitSeconds} detik lagi (๑•̀ㅂ•́)و` },
+        { quoted: message }
       );
       return;
     }

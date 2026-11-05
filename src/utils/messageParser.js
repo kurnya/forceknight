@@ -1,3 +1,16 @@
+// Hanya format raster umum yang diterima dari dokumen. SVG/HEIC/TIFF ditolak
+// (SVG diproses librsvg — permukaan serangan terbesar di sharp).
+const ALLOWED_IMAGE_DOCUMENT_MIMETYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+
+function isAllowedImageDocument(documentMessage) {
+  const mimetype = String(documentMessage?.mimetype || "").split(";")[0].trim().toLowerCase();
+  return ALLOWED_IMAGE_DOCUMENT_MIMETYPES.has(mimetype);
+}
+
+function getFileLength(mediaMessage) {
+  return Number(mediaMessage?.fileLength || 0);
+}
+
 function unwrapMessageContent(messageContent) {
   if (!messageContent) {
     return null;
@@ -94,15 +107,17 @@ function getMediaSourceMessage(message) {
       source: "direct",
       type: "image",
       message,
+      fileLength: getFileLength(directMessage.imageMessage),
       isViewOnce: isDirectViewOnce || Boolean(directMessage.imageMessage.viewOnce)
     };
   }
 
-  if (directMessage?.documentMessage?.mimetype?.startsWith("image/")) {
+  if (isAllowedImageDocument(directMessage?.documentMessage)) {
     return {
       source: "direct",
       type: "image",
       message,
+      fileLength: getFileLength(directMessage.documentMessage),
       isViewOnce: isDirectViewOnce
     };
   }
@@ -112,6 +127,7 @@ function getMediaSourceMessage(message) {
       source: "direct",
       type: "video",
       message,
+      fileLength: getFileLength(directMessage.videoMessage),
       isViewOnce: isDirectViewOnce || Boolean(directMessage.videoMessage.viewOnce),
       seconds: directMessage.videoMessage.seconds || 0
     };
@@ -126,15 +142,17 @@ function getMediaSourceMessage(message) {
       source: "quoted",
       type: "image",
       message: quotedMessage,
+      fileLength: getFileLength(quotedMessage.message.imageMessage),
       isViewOnce: isQuotedViewOnce || Boolean(quotedMessage.message.imageMessage.viewOnce)
     };
   }
 
-  if (quotedMessage?.message?.documentMessage?.mimetype?.startsWith("image/")) {
+  if (isAllowedImageDocument(quotedMessage?.message?.documentMessage)) {
     return {
       source: "quoted",
       type: "image",
       message: quotedMessage,
+      fileLength: getFileLength(quotedMessage.message.documentMessage),
       isViewOnce: isQuotedViewOnce
     };
   }
@@ -144,6 +162,7 @@ function getMediaSourceMessage(message) {
       source: "quoted",
       type: "video",
       message: quotedMessage,
+      fileLength: getFileLength(quotedMessage.message.videoMessage),
       isViewOnce: isQuotedViewOnce || Boolean(quotedMessage.message.videoMessage.viewOnce),
       seconds: quotedMessage.message.videoMessage.seconds || 0
     };
@@ -159,6 +178,7 @@ function getStickerSourceMessage(message) {
     return {
       source: "direct",
       message,
+      fileLength: getFileLength(directMessage.stickerMessage),
       isAnimated: Boolean(directMessage.stickerMessage.isAnimated)
     };
   }
@@ -169,6 +189,7 @@ function getStickerSourceMessage(message) {
     return {
       source: "quoted",
       message: quotedMessage,
+      fileLength: getFileLength(quotedMessage.message.stickerMessage),
       isAnimated: Boolean(quotedMessage.message.stickerMessage.isAnimated)
     };
   }

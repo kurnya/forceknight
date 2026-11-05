@@ -18,6 +18,10 @@ for (const command of registeredCommands) {
   }
 }
 
+// Dibuat sekali saat load — bukan di setiap pesan
+const globallyEnabledCommands = new Set(settings.enabledCommands);
+const alwaysAllowedCommands = new Set([help.name, menu.name]);
+
 // Cache LID bot — diisi dari berbagai sumber, manapun yang lebih dulu tersedia
 let cachedBotLid = null;
 
@@ -132,15 +136,13 @@ async function handleMessage(sock, message) {
       return;
     }
 
-    console.log("[MESSAGE] Pesan masuk dari grup:", remoteJid);
-
+    // Tidak log setiap pesan grup — di grup ramai ini membebani I/O.
+    // Log cukup saat command benar-benar dijalankan (lihat [COMMAND] di bawah).
     if (!isAllowedGroup(remoteJid)) {
-      console.log("[GROUP BLOCKED] Grup tidak diizinkan:", remoteJid);
       return;
     }
 
     if (isReplyingToBot(sock, message)) {
-      console.log("[REPLY IGNORED] Pesan reply ke Fuuka diabaikan:", remoteJid);
       return;
     }
 
@@ -154,22 +156,25 @@ async function handleMessage(sock, message) {
     const normalizedMessageText = messageText.toLowerCase();
     const plainCommandName = normalizedMessageText.split(/\s+/)[0];
     const mentionedJids = getMentionedJids(message);
+    // Identitas bot dihitung sekali per pesan, lalu dipakai ulang di semua pengecekan
     const botIdentityNumbers = getBotIdentityNumbers(sock);
     const botRawJids = getBotRawJids(sock);
+    const botLidBases = [sock?.user?.lid, cachedBotLid]
+      .filter(Boolean)
+      .map((lid) => String(lid).split(/[:@]/)[0]);
 
-    const isBotMentioned = mentionedJids.length > 0 && mentionedJids.some((jid) => {
+    const isBotJid = (jid) => {
       // Cek via normalized number — format normal: 628xxx@s.whatsapp.net
       const jidNum = normalizeJidUser(jid);
       if (jidNum && botIdentityNumbers.has(jidNum)) return true;
       // Cek via raw JID — termasuk format LID penuh: 12345:0@lid
       if (botRawJids.has(jid)) return true;
       // Cek partial LID — bandingkan bagian angka saja sebelum ':' atau '@'
-      const jidBase = jid.split(/[:@]/)[0];
-      for (const lid of [sock?.user?.lid, cachedBotLid].filter(Boolean)) {
-        if (jidBase && jidBase === String(lid).split(/[:@]/)[0]) return true;
-      }
-      return false;
-    });
+      const jidBase = String(jid).split(/[:@]/)[0];
+      return Boolean(jidBase) && botLidBases.includes(jidBase);
+    };
+
+    const isBotMentioned = mentionedJids.some(isBotJid);
 
     const isReplyToBot = false;
     const quotedText = "";
@@ -182,29 +187,20 @@ async function handleMessage(sock, message) {
     const quotedParticipant = quotedContext?.participant || null;
     const isReplyToMember = Boolean(
       quotedParticipant &&
-      !getBotIdentityNumbers(sock).has(normalizeJidUser(quotedParticipant)) &&
-      !getBotRawJids(sock).has(quotedParticipant)
+      !botIdentityNumbers.has(normalizeJidUser(quotedParticipant)) &&
+      !botRawJids.has(quotedParticipant)
     );
+    const messageWords = normalizedMessageText.split(/\s+/);
+    const messageHasIntroKeyword = messageWords.includes(intro.name);
     // Trigger intro via reply: reply pesan member + teks "intro" (posisi bebas)
-    const isIntroViaReply = isReplyToMember && normalizedMessageText.split(/\s+/).includes(intro.name);
+    const isIntroViaReply = isReplyToMember && messageHasIntroKeyword;
 
     // Intro trigger — berbagai pola yang didukung:
     // 1. "intro @member"         — kata pertama adalah "intro", ada mention non-bot
     // 2. "@member intro"         — ada kata "intro" di mana saja, ada mention non-bot
     // 3. "@member"               — hanya mention (tanpa kata apapun), ada mention non-bot
     // 4. Reply pesan member + ketik "intro" (posisi bebas)
-    const nonBotMentions = mentionedJids.filter((jid) => {
-      const jidNum = normalizeJidUser(jid);
-      if (jidNum && getBotIdentityNumbers(sock).has(jidNum)) return false;
-      if (getBotRawJids(sock).has(jid)) return false;
-      const jidBase = jid.split(/[:@]/)[0];
-      for (const lid of [sock?.user?.lid, cachedBotLid].filter(Boolean)) {
-        if (jidBase && jidBase === String(lid).split(/[:@]/)[0]) return false;
-      }
-      return true;
-    });
-    const hasNonBotMention = nonBotMentions.length > 0;
-    const messageHasIntroKeyword = normalizedMessageText.split(/\s+/).includes(intro.name);
+    const hasNonBotMention = mentionedJids.some((jid) => !isBotJid(jid));
     const isIntroTrigger = !hasPrefix && !isBotMentioned && (
       isIntroViaReply ||
       (hasNonBotMention && messageHasIntroKeyword)
@@ -236,9 +232,6 @@ async function handleMessage(sock, message) {
     const normalizedCommandName = commandName.toLowerCase();
     const command = commands.get(normalizedCommandName);
     const canonicalCommandName = command?.name || normalizedCommandName;
-    const globallyEnabledCommands = new Set(settings.enabledCommands);
-
-    const alwaysAllowedCommands = new Set([help.name, menu.name]);
 
     if (!alwaysAllowedCommands.has(canonicalCommandName) && !globallyEnabledCommands.has(canonicalCommandName)) {
       console.log(`[COMMAND DISABLED] Command ${canonicalCommandName} sedang dinonaktifkan secara global.`);
@@ -255,6 +248,8 @@ async function handleMessage(sock, message) {
     if (!command) {
       return;
     }
+
+    console.log(`[COMMAND] ${canonicalCommandName} | grup ${remoteJid}`);
 
     await command.execute({
       sock,

@@ -10,7 +10,7 @@ const sharp = require("sharp");
 
 const settings = require("../config/settings");
 const { getMediaSourceMessage } = require("../utils/messageParser");
-const { runMediaJob } = require("../utils/mediaQueue");
+const { runMediaJob, takeUserMediaSlot } = require("../utils/mediaQueue");
 
 const MAX_ANIMATED_STICKER_SECONDS = 6;
 const viewOncePrivacyReplies = [
@@ -127,7 +127,38 @@ module.exports = {
       return;
     }
 
-    let processingSent = false;
+    // Validasi dari metadata pesan dulu — sebelum download & sebelum ambil slot antrean
+    if (mediaSource.type === "video" && mediaSource.seconds > MAX_ANIMATED_STICKER_SECONDS) {
+      await sock.sendMessage(
+        message.key.remoteJid,
+        {
+          text: `Video terlalu panjang (${mediaSource.seconds}s). Maksimal ${MAX_ANIMATED_STICKER_SECONDS} detik untuk stiker animasi.`
+        },
+        { quoted: message }
+      );
+      return;
+    }
+
+    if (mediaSource.fileLength > settings.mediaMaxBytes) {
+      await sock.sendMessage(
+        message.key.remoteJid,
+        {
+          text: `Ukuran medianya terlalu besar (${(mediaSource.fileLength / 1048576).toFixed(1)} MB). Maksimal ${Math.round(settings.mediaMaxBytes / 1048576)} MB yaa~ (｡•́︿•̀｡)`
+        },
+        { quoted: message }
+      );
+      return;
+    }
+
+    const waitSeconds = takeUserMediaSlot(message.key.participant || message.key.remoteJid, settings.mediaUserCooldownMs);
+    if (waitSeconds) {
+      await sock.sendMessage(
+        message.key.remoteJid,
+        { text: `Sabar yaa~ tunggu ${waitSeconds} detik lagi sebelum bikin stiker berikutnya (๑•̀ㅂ•́)و` },
+        { quoted: message }
+      );
+      return;
+    }
 
     try {
       const stickerBuffer = await runMediaJob(async () => {
@@ -142,23 +173,11 @@ module.exports = {
         );
 
         if (mediaSource.type === "video") {
-          if (mediaSource.seconds > MAX_ANIMATED_STICKER_SECONDS) {
-            await sock.sendMessage(
-              message.key.remoteJid,
-              {
-                text: `Video terlalu panjang (${mediaSource.seconds}s). Maksimal ${MAX_ANIMATED_STICKER_SECONDS} detik untuk stiker animasi.`
-              },
-              { quoted: message }
-            );
-            return null;
-          }
-
           await sock.sendMessage(
             message.key.remoteJid,
             { text: "Sedang proses stiker video... tunggu sebentar yaa~ (๑˃ᴗ˂)ﻭ" },
             { quoted: message }
           );
-          processingSent = true;
         }
 
         return mediaSource.type === "video"

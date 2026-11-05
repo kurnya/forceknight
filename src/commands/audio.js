@@ -6,7 +6,7 @@ const { execSync } = require("child_process");
 const { create: createYtDlp } = require("youtube-dl-exec");
 
 const settings = require("../config/settings");
-const { runMediaJob } = require("../utils/mediaQueue");
+const { runMediaJob, takeUserMediaSlot } = require("../utils/mediaQueue");
 
 // Cari binary yt-dlp — coba beberapa lokasi secara berurutan
 function resolveYtDlpBinary() {
@@ -78,6 +78,21 @@ function resolveFfmpegPath() {
   // 3. Biarkan fluent-ffmpeg cari sendiri di PATH (biasanya works kalau ffmpeg ada di PATH)
   console.warn("[AUDIO] ffmpeg tidak ditemukan di lokasi manapun. Menyerahkan ke fluent-ffmpeg untuk resolusi otomatis.");
   return null;
+}
+
+// Resolusi ffmpeg cukup sekali (lazy) — execSync memblokir event loop,
+// jadi jangan dijalankan ulang di setiap request.
+let cachedFfmpeg = null;
+
+function getFfmpeg() {
+  if (!cachedFfmpeg) {
+    cachedFfmpeg = require("fluent-ffmpeg");
+    const resolvedFfmpegPath = resolveFfmpegPath();
+    if (resolvedFfmpegPath) {
+      cachedFfmpeg.setFfmpegPath(resolvedFfmpegPath);
+    }
+  }
+  return cachedFfmpeg;
 }
 
 function findYoutubeUrl(args) {
@@ -193,7 +208,8 @@ async function createCookieFile() {
     ""
   ].join("\n");
 
-  await fs.writeFile(cookiePath, cookieText, "utf8");
+  // mode 0o600: hanya user proses bot yang bisa membaca cookies login YouTube
+  await fs.writeFile(cookiePath, cookieText, { encoding: "utf8", mode: 0o600 });
   console.log("[AUDIO] YouTube cookies aktif untuk downloader.");
 
   return cookiePath;
@@ -228,9 +244,10 @@ async function downloadYoutubeAudio(url, cookiePath) {
   try {
     // Download audio-only tanpa post-processing (tidak butuh ffprobe)
     // Pakai client tv/mweb sebagai fallback untuk bypass 403 di server hosting
+    // Utamakan m4a (AAC) — bisa langsung dikirim ke WhatsApp tanpa re-encode ffmpeg
     await ytDlp.exec(url, {
       ...createBaseFlags(cookiePath),
-      format: "bestaudio/best",
+      format: "bestaudio[ext=m4a]/bestaudio/best",
       output: outputTemplate,
       noPostOverwrites: true,
       maxFilesize: settings.audioMaxDownloadSize,
@@ -239,7 +256,7 @@ async function downloadYoutubeAudio(url, cookiePath) {
     });
 
     // Cek file mana yang ter-download
-    const extensions = ["webm", "m4a", "mp4", "mkv", "flv", "aac", "ogg", "opus"];
+    const extensions = ["m4a", "webm", "mp4", "mkv", "flv", "aac", "ogg", "opus"];
     for (const ext of extensions) {
       const candidate = path.join(os.tmpdir(), `youtube-audio-${tempId}.${ext}`);
       try {
@@ -253,15 +270,14 @@ async function downloadYoutubeAudio(url, cookiePath) {
       throw new Error("File audio tidak ditemukan setelah download.");
     }
 
-    // Konversi ke mp3 pakai ffmpeg langsung (tidak butuh ffprobe)
-    await new Promise((resolve, reject) => {
-      const ffmpeg = require("fluent-ffmpeg");
+    // m4a sudah AAC — kirim apa adanya, hemat CPU (tidak perlu encode ulang)
+    if (path.extname(downloadedPath) === ".m4a") {
+      return { buffer: await fs.readFile(downloadedPath), mimetype: "audio/mp4", ext: "m4a" };
+    }
 
-      // Resolusi ffmpeg path: coba ffmpeg-static dulu, fallback ke system ffmpeg
-      const resolvedFfmpegPath = resolveFfmpegPath();
-      if (resolvedFfmpegPath) {
-        ffmpeg.setFfmpegPath(resolvedFfmpegPath);
-      }
+    // Format lain (webm/opus, dll) — konversi ke mp3 pakai ffmpeg (tidak butuh ffprobe)
+    await new Promise((resolve, reject) => {
+      const ffmpeg = getFfmpeg();
 
       let timedOut = false;
       let proc = null;
@@ -284,7 +300,7 @@ async function downloadYoutubeAudio(url, cookiePath) {
         .on("error", (err) => { clearTimeout(timeoutId); if (!timedOut) reject(err); });
     });
 
-    return fs.readFile(mp3Path);
+    return { buffer: await fs.readFile(mp3Path), mimetype: "audio/mpeg", ext: "mp3" };
   } finally {
     await Promise.allSettled([
       downloadedPath ? fs.unlink(downloadedPath) : Promise.resolve(),
@@ -298,9 +314,9 @@ module.exports = {
   aliases: ["mp3", "ytmp3"],
   description: "Mengunduh audio MP3 dari link YouTube.",
   execute: async ({ sock, message, args = [], prefix }) => {
-    const url = findYoutubeUrl(args);
+    const rawUrl = findYoutubeUrl(args);
 
-    if (!url) {
+    if (!rawUrl) {
       await sock.sendMessage(
         message.key.remoteJid,
         {
@@ -313,7 +329,9 @@ module.exports = {
       return;
     }
 
-    if (!getYoutubeVideoId(url)) {
+    const videoId = getYoutubeVideoId(rawUrl);
+
+    if (!/^[A-Za-z0-9_-]{6,20}$/.test(videoId)) {
       await sock.sendMessage(
         message.key.remoteJid,
         {
@@ -322,6 +340,19 @@ module.exports = {
         {
           quoted: message
         }
+      );
+      return;
+    }
+
+    // Kirim URL kanonik ke yt-dlp, bukan teks mentah dari user
+    const url = `https://www.youtube.com/watch?v=${videoId}`;
+
+    const waitSeconds = takeUserMediaSlot(message.key.participant || message.key.remoteJid, settings.mediaUserCooldownMs);
+    if (waitSeconds) {
+      await sock.sendMessage(
+        message.key.remoteJid,
+        { text: `Sabar yaa~ tunggu ${waitSeconds} detik lagi sebelum request audio berikutnya (๑•̀ㅂ•́)و` },
+        { quoted: message }
       );
       return;
     }
@@ -408,14 +439,14 @@ async function processYoutubeAudioCommand({ sock, message, url }) {
     );
 
     try {
-      const audioBuffer = await downloadYoutubeAudio(url, cookiePath);
+      const audioFile = await downloadYoutubeAudio(url, cookiePath);
 
       await sock.sendMessage(
         message.key.remoteJid,
         {
-          audio: audioBuffer,
-          mimetype: "audio/mpeg",
-          fileName: `${title}.mp3`
+          audio: audioFile.buffer,
+          mimetype: audioFile.mimetype,
+          fileName: `${title}.${audioFile.ext}`
         },
         {
           quoted: message

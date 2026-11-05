@@ -43,7 +43,7 @@ whatsapp-bot/
 
 ## Cara Install
 
-1. Pastikan Node.js versi 18 atau lebih baru sudah terpasang.
+1. Pastikan Node.js versi 20.9 atau lebih baru sudah terpasang.
 2. Install dependency:
 
 ```bash
