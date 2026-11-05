@@ -18,7 +18,6 @@ const sharp = require("sharp");
 
 const settings = require("./config/settings");
 const { handleMessage, setBotLid, resetBotLid, tryCaptureBotLid } = require("./handlers/messageHandler");
-const { startTempCleanupScheduler } = require("./utils/tempCleanup");
 const { configureMediaQueue, drainMediaQueue } = require("./utils/mediaQueue");
 
 sharp.concurrency(settings.sharpConcurrency);
@@ -310,7 +309,6 @@ async function startBot() {
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
 
 startHttpServer();
-startTempCleanupScheduler(settings);
 
 // Fetch versi WA di background saat startup — siap sebelum bot connect
 getWAVersion();

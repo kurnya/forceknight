@@ -1,10 +1,4 @@
 const { downloadMediaMessage } = require("@whiskeysockets/baileys");
-const crypto = require("crypto");
-const fs = require("fs/promises");
-const os = require("os");
-const path = require("path");
-const ffmpeg = require("fluent-ffmpeg");
-const ffmpegPath = require("ffmpeg-static");
 const P = require("pino");
 const sharp = require("sharp");
 
@@ -12,7 +6,6 @@ const settings = require("../config/settings");
 const { getMediaSourceMessage } = require("../utils/messageParser");
 const { runMediaJob, takeUserMediaSlot } = require("../utils/mediaQueue");
 
-const MAX_ANIMATED_STICKER_SECONDS = 6;
 const viewOncePrivacyReplies = [
   "E-ehh, Fuuka nggak boleh bikin stiker dari media sekali lihat yaa... itu rahasia member, harus dijaga baik-baik~ (｡•́︿•̀｡)",
   "Uwaa, ini media sekali lihat lho~ Fuuka tutup mata dulu yaa, privasi member nomor satu! (つ﹏⊂)",
@@ -25,8 +18,6 @@ const viewOncePrivacyReplies = [
   "Fuuka simpan sopan santun dulu yaa: media sekali lihat tetap sekali lihat, bukan untuk dijadikan stiker~ (๑˃ᴗ˂)ﻭ",
   "Rahasia member terdeteksi! Fuuka nggak akan proses media sekali lihat jadi stiker. Aman bersama Fuuka~ (o^▽^o)"
 ];
-
-ffmpeg.setFfmpegPath(ffmpegPath);
 
 function pickRandomReply(replies) {
   return replies[Math.floor(Math.random() * replies.length)];
@@ -49,67 +40,16 @@ async function convertImageToSticker(imageBuffer) {
     .toBuffer();
 }
 
-async function convertVideoToSticker(videoBuffer) {
-  const tempId = crypto.randomUUID();
-  const inputPath = path.join(os.tmpdir(), `stiker-${tempId}.mp4`);
-  const outputPath = path.join(os.tmpdir(), `stiker-${tempId}.webp`);
-
-  await fs.writeFile(inputPath, videoBuffer);
-
-  try {
-    await new Promise((resolve, reject) => {
-      let timedOut = false;
-      let ffmpegProc = null;
-
-      const timeoutId = setTimeout(() => {
-        timedOut = true;
-        try { ffmpegProc?.kill("SIGKILL"); } catch (_e) { /* ignore */ }
-        reject(new Error("FFmpeg timeout"));
-      }, settings.ffmpegTimeoutMs);
-
-      ffmpegProc = ffmpeg(inputPath)
-        .outputOptions([
-          "-t 6",
-          "-threads 1",
-          "-vcodec libwebp_anim",
-          "-vf scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=0x00000000,fps=15",
-          "-loop 0",
-          "-an",
-          "-q:v 70",
-          "-compression_level 4",
-          "-preset default"
-        ])
-        .format("webp")
-        .save(outputPath)
-        .on("end", () => {
-          clearTimeout(timeoutId);
-          if (!timedOut) resolve();
-        })
-        .on("error", (error) => {
-          clearTimeout(timeoutId);
-          if (!timedOut) reject(error);
-        });
-    });
-
-    return fs.readFile(outputPath);
-  } finally {
-    await Promise.allSettled([
-      fs.unlink(inputPath),
-      fs.unlink(outputPath)
-    ]);
-  }
-}
-
 module.exports = {
   name: "stiker",
   aliases: ["sticker"],
-  description: "Mengubah gambar atau video pendek menjadi stiker WhatsApp.",
+  description: "Mengubah gambar menjadi stiker WhatsApp.",
   execute: async ({ sock, message }) => {
     const mediaSource = getMediaSourceMessage(message);
 
     if (!mediaSource) {
       await sock.sendMessage(message.key.remoteJid, {
-        text: "Reply gambar/video pendek dengan !stiker, atau kirim media dengan caption !stiker. Untuk PNG transparan, kirim sebagai dokumen agar latarnya tetap transparan."
+        text: "Reply gambar dengan !stiker, atau kirim gambar dengan caption !stiker. Untuk PNG transparan, kirim sebagai dokumen agar latarnya tetap transparan."
       });
       return;
     }
@@ -127,18 +67,19 @@ module.exports = {
       return;
     }
 
-    // Validasi dari metadata pesan dulu — sebelum download & sebelum ambil slot antrean
-    if (mediaSource.type === "video" && mediaSource.seconds > MAX_ANIMATED_STICKER_SECONDS) {
+    // Stiker video dimatikan — konversi video terlalu berat untuk server
+    if (mediaSource.type === "video") {
       await sock.sendMessage(
         message.key.remoteJid,
         {
-          text: `Video terlalu panjang (${mediaSource.seconds}s). Maksimal ${MAX_ANIMATED_STICKER_SECONDS} detik untuk stiker animasi.`
+          text: "Maaf yaa, stiker dari video/GIF lagi dimatikan biar server Fuuka nggak kepanasan~ Kirim gambar aja yaa (｡•́︿•̀｡)"
         },
         { quoted: message }
       );
       return;
     }
 
+    // Validasi ukuran dari metadata pesan — sebelum download & sebelum ambil slot antrean
     if (mediaSource.fileLength > settings.mediaMaxBytes) {
       await sock.sendMessage(
         message.key.remoteJid,
@@ -172,17 +113,7 @@ module.exports = {
           }
         );
 
-        if (mediaSource.type === "video") {
-          await sock.sendMessage(
-            message.key.remoteJid,
-            { text: "Sedang proses stiker video... tunggu sebentar yaa~ (๑˃ᴗ˂)ﻭ" },
-            { quoted: message }
-          );
-        }
-
-        return mediaSource.type === "video"
-          ? await convertVideoToSticker(mediaBuffer)
-          : await convertImageToSticker(mediaBuffer);
+        return convertImageToSticker(mediaBuffer);
       });
 
       if (!stickerBuffer) {
@@ -215,9 +146,7 @@ module.exports = {
       await sock.sendMessage(
         message.key.remoteJid,
         {
-          text: error.message === "FFmpeg timeout"
-            ? "Proses stiker videonya terlalu lama. Coba video yang lebih pendek yaa~ (｡•́︿•̀｡)"
-            : "Maaf yaa, Fuuka belum bisa bikin stiker dari media ini. Coba media lain dulu~ (´；ω；`)"
+          text: "Maaf yaa, Fuuka belum bisa bikin stiker dari media ini. Coba media lain dulu~ (´；ω；`)"
         },
         { quoted: message }
       );

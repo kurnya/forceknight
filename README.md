@@ -9,9 +9,8 @@ Bot WhatsApp berbasis Node.js dan Baileys dengan struktur modular, whitelist gru
 - Mengabaikan chat pribadi
 - Mengabaikan grup di luar whitelist
 - Parsing command otomatis
-- Mendukung pembuatan stiker dari gambar/video
+- Mendukung pembuatan stiker dari gambar
 - Mendukung konversi stiker menjadi gambar PNG
-- Mendukung konversi stiker bergerak menjadi GIF atau MP4
 - Logging koneksi, QR, pesan masuk, dan grup tidak diizinkan
 - Autentikasi multi file di folder `auth/`
 - Siap dipakai lokal dan push ke GitHub
@@ -122,10 +121,8 @@ ALLOWED_GROUPS=120363412345678901@g.us,120363400000000000@g.us
 - `!ping` membalas `Pong 🏓`
 - `!menu` menampilkan menu bot
 - `!help` menampilkan bantuan penggunaan
-- `!stiker` mengubah gambar/video pendek menjadi stiker
+- `!stiker` mengubah gambar menjadi stiker
 - `!gambar` mengubah stiker menjadi gambar PNG
-- `!gif` mengubah stiker bergerak menjadi GIF
-- `!video` mengubah stiker bergerak menjadi MP4
 - `!fuuka` membalas `moshi moshi fuuka desu`
 - `!info` mencari item lokal berdasarkan stat/kategori
 
@@ -185,22 +182,6 @@ Reply stiker dengan pesan:
 ```
 
 Bot akan mengunduh stiker lalu mengirim balik gambar PNG. Untuk stiker animasi, bot mengambil frame pertama sebagai gambar.
-
-## Cara Mengubah Stiker Bergerak Jadi GIF atau Video
-
-Reply stiker bergerak dengan salah satu pesan:
-
-```text
-!gif
-```
-
-atau:
-
-```text
-!video
-```
-
-`!gif` mengirim hasil sebagai file GIF, sedangkan `!video` mengirim hasil sebagai video MP4.
 
 ## Deploy ke GitHub
 

@@ -27,17 +27,12 @@ const commandMenuItems = [
   {
     name: "stiker",
     usage: (prefix) => `${prefix}stiker`,
-    description: "Buat stiker dari gambar/video."
+    description: "Buat stiker dari gambar."
   },
   {
     name: "gambar",
     usage: (prefix) => `${prefix}gambar`,
     description: "Ubah stiker jadi gambar PNG."
-  },
-  {
-    name: "audio",
-    usage: (prefix) => `${prefix}mp3 <link YouTube>`,
-    description: "Download audio YouTube."
   },
   {
     name: "help",
@@ -182,12 +177,6 @@ function buildMenuText(prefix, remoteJid) {
     "Contoh: @fuuka jelaskan blacksmith → Otomatis muncul #8",
     "Lihat semua topik: !help"
   );
-
-  if (menuItems.some((item) => item.name === "audio")) {
-    lines.push("", "━━━━━━━━━━━━━━━━━━━━");
-    lines.push("📝 Catatan MP3:");
-    lines.push("Maksimal 10 menit. Jangan spam yaa, nanti Fuuka cemberut! (｡•́︿•̀｡)");
-  }
 
   lines.push(
     "",

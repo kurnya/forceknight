@@ -4,7 +4,7 @@
  * On a single-core server, running multiple FFmpeg/Sharp jobs in parallel
  * will saturate the CPU and stall the Node.js event loop. This queue
  * ensures that at most `maxConcurrent` heavy jobs run at the same time
- * across ALL commands (stiker, video, gif, gambar, audio).
+ * across ALL commands (stiker, gambar).
  *
  * When the queue is full, incoming requests are queued and processed in
  * FIFO order, so no user is silently rejected.
