@@ -92,6 +92,8 @@ Jika QR di terminal kurang jelas, buka URL yang dicetak dengan label `[QR] Versi
 
 QR adalah kredensial sementara untuk menghubungkan akun WhatsApp. Jangan membagikan URL tersebut kepada orang lain dan jangan mengekspos endpoint ini tanpa perlindungan jaringan yang sesuai.
 
+Tanpa domain hosting, aktifkan `QR_EXTERNAL_LINK=true` untuk mendapatkan link QR QuickChart yang bisa dibuka langsung dari browser. Perhatikan bahwa isi QR dikirim ke QuickChart, jadi opsi ini hanya disarankan untuk QR pairing sementara. Matikan kembali dengan `QR_EXTERNAL_LINK=false` setelah selesai.
+
 ## Konfigurasi AI multi-provider
 
 Bot tidak bergantung pada Groq. Provider dipilih lewat `AI_PROVIDERS`; provider yang gagal karena limit, key invalid, model tidak tersedia, atau timeout akan dilewati otomatis.

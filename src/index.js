@@ -258,6 +258,10 @@ async function startBot() {
           latestQrPng = png;
           latestQrVersion += 1;
           console.log(`[QR] Versi gambar: ${getQrBrowserUrl()}`);
+          if (String(process.env.QR_EXTERNAL_LINK || "").toLowerCase() === "true") {
+            const quickChartUrl = `https://quickchart.io/qr?size=480&text=${encodeURIComponent(qr)}`;
+            console.log(`[QR] Link eksternal: ${quickChartUrl}`);
+          }
         }).catch((err) => {
           console.error("[QR] Gagal membuat gambar QR:", err.message);
         });
