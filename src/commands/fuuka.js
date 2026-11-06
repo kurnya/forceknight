@@ -1,4 +1,4 @@
-const { askFuukaAI, detectHelpTopic } = require("../services/groqService");
+const { askFuukaAI, detectHelpTopic } = require("../services/aiService");
 const helpCommand = require("./help");
 
 const fuukaResponses = {
@@ -273,6 +273,14 @@ function cleanupFuukaMaps() {
     }
   }
 
+  for (const [id, entry] of aiChatMessages) {
+    if (now - entry.at > AI_CHAT_TTL_MS) aiChatMessages.delete(id);
+  }
+
+  for (const [groupId, timestamps] of groupAiReplies) {
+    if (!timestamps.some((t) => now - t < GROUP_AI_WINDOW_MS)) groupAiReplies.delete(groupId);
+  }
+
   if (cooldownCleaned > 0) {
     console.log(`[FUUKA CLEANUP] Cleaned ${cooldownCleaned} cooldown entries`);
   }
@@ -280,6 +288,53 @@ function cleanupFuukaMaps() {
 
 const fuukaCleanupTimer = setInterval(cleanupFuukaMaps, FUUKA_CLEANUP_INTERVAL_MS);
 fuukaCleanupTimer.unref?.();
+
+// ── Catatan pesan chat AI Fuuka ────────────────────────────────────────────
+// Hanya reply ke pesan yang tercatat di sini yang dilanjutkan oleh AI.
+// Reply ke pesan help/menu/intro/stiker Fuuka TIDAK memicu AI.
+const aiChatMessages = new Map(); // messageId -> { text, at }
+const AI_CHAT_TTL_MS = 30 * 60 * 1000;
+const AI_CHAT_MAX_ENTRIES = 300;
+
+function rememberAiChatMessage(messageId, text) {
+  if (!messageId) return;
+  if (aiChatMessages.size >= AI_CHAT_MAX_ENTRIES) {
+    aiChatMessages.delete(aiChatMessages.keys().next().value);
+  }
+  aiChatMessages.set(messageId, { text, at: Date.now() });
+}
+
+function getAiChatMessage(messageId) {
+  const entry = messageId ? aiChatMessages.get(messageId) : null;
+  if (!entry) return null;
+  if (Date.now() - entry.at > AI_CHAT_TTL_MS) {
+    aiChatMessages.delete(messageId);
+    return null;
+  }
+  return entry;
+}
+
+function isAiChatMessage(messageId) {
+  return Boolean(getAiChatMessage(messageId));
+}
+
+// ── Batas balasan AI per grup ──────────────────────────────────────────────
+// Rem darurat: mencegah balasan beruntun (mis. dengan bot lain di grup) & hemat kuota.
+const groupAiReplies = new Map(); // groupId -> [timestamp, ...]
+const GROUP_AI_LIMIT = 6;
+const GROUP_AI_WINDOW_MS = 60 * 1000;
+
+function takeGroupAiSlot(groupId) {
+  const now = Date.now();
+  const recent = (groupAiReplies.get(groupId) || []).filter((t) => now - t < GROUP_AI_WINDOW_MS);
+  if (recent.length >= GROUP_AI_LIMIT) {
+    groupAiReplies.set(groupId, recent);
+    return false;
+  }
+  recent.push(now);
+  groupAiReplies.set(groupId, recent);
+  return true;
+}
 
 function isOnCooldown(userId) {
   const last = cooldownMap.get(userId);
@@ -393,12 +448,31 @@ function getComplimentResponse(text, chatId) {
   return pickUnique(complimentResponses[mood], `compliment:${chatId}:${mood}`);
 }
 
+// Pada beberapa pesan grup Baileys mengisi senderPn, participant, atau field
+// participant lain tergantung format JID/LID. Jangan langsung fallback ke
+// remoteJid karena itu adalah JID grup dan akan membuat semua anggota berbagi
+// satu mind map.
+function getMessageSenderId(message) {
+  const key = message?.key || {};
+  return (
+    key.senderPn ||
+    key.participantPn ||
+    key.participant ||
+    message?.participant ||
+    key.remoteJid ||
+    "unknown-sender"
+  );
+}
+
 module.exports = {
   name: "fuuka",
   description: "Fuuka membalas dengan variasi ekspresi lucu dan sapaan waktu.",
   shouldTriggerWithoutPrefix,
+  isAiChatMessage,
+  getAiChatMessage,
+  getMessageSenderId,
   execute: async ({ sock, message, rawText = "", isBotMentioned = false, isReplyToBot = false, quotedText = "" }) => {
-    const senderId = message.key.participant || message.key.remoteJid;
+    const senderId = getMessageSenderId(message);
     const chatId = message.key.remoteJid;
 
     if (isOnCooldown(senderId)) {
@@ -406,8 +480,15 @@ module.exports = {
     }
     markCooldown(senderId);
 
+    // Lanjutan chat via reply: kalau batas grup tercapai, diam saja (memutus rantai balasan)
+    if (isReplyToBot && !takeGroupAiSlot(chatId)) {
+      console.log(`[FUUKA AI] Batas ${GROUP_AI_LIMIT}/menit tercapai di ${chatId}, reply diabaikan.`);
+      return;
+    }
+
     try {
       let text;
+      let isAiChat = false;
 
       if (isBotMentioned) {
         // Bot was @mentioned → check if user is asking about help topics
@@ -430,15 +511,20 @@ module.exports = {
           return; // Don't continue to AI response
         }
         
-        // Not a help topic → use AI
-        const aiResponse = await askFuukaAI(cleanedMessage || "halo", "", senderId);
+        // Not a help topic → use AI.
+        // Balasan lokal (gratis, tanpa token) kalau: cuma @mention tanpa isi, atau batas grup tercapai.
+        const aiResponse = cleanedMessage && takeGroupAiSlot(chatId)
+          ? await askFuukaAI(cleanedMessage, { userId: senderId, chatId, userName: message.pushName })
+          : null;
         text = aiResponse || getRandomFuukaResponse(chatId).response;
-        console.log(`[FUUKA AI] ${aiResponse ? "AI response" : "Fallback to local"} for: ${cleanedMessage}`);
+        isAiChat = true;
+        console.log(`[FUUKA AI] ${aiResponse ? "AI response" : "Fallback to local"}`);
       } else if (isReplyToBot) {
-        // User replied to Fuuka's message → continue conversation with AI
-        const aiResponse = await askFuukaAI(rawText, quotedText, senderId);
+        // User replied to Fuuka's chat message → continue conversation with AI
+        const aiResponse = await askFuukaAI(rawText, { previousReply: quotedText, userId: senderId, chatId, userName: message.pushName });
         text = aiResponse || getRandomFuukaResponse(chatId).response;
-        console.log(`[FUUKA AI] ${aiResponse ? "Reply conversation" : "Fallback to local"} | context: ${quotedText.substring(0, 50)}`);
+        isAiChat = true;
+        console.log(`[FUUKA AI] ${aiResponse ? "Reply conversation" : "Fallback to local"}`);
       } else {
         // No @mention, no reply → try local patterns first, then random fallback
         const complimentResponse = getComplimentResponse(rawText, chatId);
@@ -446,11 +532,16 @@ module.exports = {
         text = complimentResponse || greetingResponse || getRandomFuukaResponse(chatId).response;
       }
 
-      await sock.sendMessage(
+      const sent = await sock.sendMessage(
         chatId,
         { text },
         { quoted: message }
       );
+
+      // Catat pesan chat AI supaya reply ke pesan ini bisa dilanjutkan oleh AI
+      if (isAiChat) {
+        rememberAiChatMessage(sent?.key?.id, text);
+      }
     } catch (error) {
       console.error("[fuuka] Gagal mengirim balasan:", error.message);
     }

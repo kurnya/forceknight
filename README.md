@@ -13,6 +13,7 @@ Bot WhatsApp berbasis Node.js dan Baileys dengan struktur modular, whitelist gru
 - Mendukung konversi stiker menjadi gambar PNG
 - Logging koneksi, QR, pesan masuk, dan grup tidak diizinkan
 - Autentikasi multi file di folder `auth/`
+- Multi-provider AI dengan rotasi banyak API key dan fallback otomatis
 - Siap dipakai lokal dan push ke GitHub
 
 ## Struktur Project
@@ -86,6 +87,45 @@ npm start
 ```
 
 Saat pertama kali jalan, terminal akan menampilkan QR code. Scan QR tersebut dari aplikasi WhatsApp yang akan dipakai untuk bot.
+
+Jika QR di terminal kurang jelas, buka URL yang dicetak dengan label `[QR] Versi gambar` (default: `http://localhost:3000/qr`). Halaman tersebut menampilkan QR PNG dan memperbaruinya otomatis. Jika bot berjalan di server, isi `QR_BROWSER_URL` dengan URL publik server, misalnya `https://domain-anda.example/qr`.
+
+QR adalah kredensial sementara untuk menghubungkan akun WhatsApp. Jangan membagikan URL tersebut kepada orang lain dan jangan mengekspos endpoint ini tanpa perlindungan jaringan yang sesuai.
+
+## Konfigurasi AI multi-provider
+
+Bot tidak bergantung pada Groq. Provider dipilih lewat `AI_PROVIDERS`; provider yang gagal karena limit, key invalid, model tidak tersedia, atau timeout akan dilewati otomatis.
+
+Contoh konfigurasi Groq Qwen sebagai provider utama dengan Gemini sebagai fallback:
+
+```env
+AI_PROVIDERS=groq,gemini
+GEMINI_API_KEY=AIza_key_utama
+GEMINI_API_KEY_2=AIza_key_cadangan
+GEMINI_MODEL=gemini-3.5-flash-lite,gemini-3.8-flash
+GROQ_API_KEY=gsk_key_anda
+GROQ_MODEL=qwen/qwen3.8-27b
+GROQ_REASONING_EFFORT=none
+```
+
+Banyak key dapat ditulis dengan nomor (`_2`, `_3`, dan seterusnya) atau dipisahkan koma. Key dipakai bergiliran. Saat terkena rate limit, key tersebut diistirahatkan sementara dan bot mencoba key/provider berikutnya.
+
+Provider OpenAI-compatible juga dapat ditambahkan dengan pola yang sama. Contohnya:
+
+```env
+AI_PROVIDERS=gemini,deepinfra
+DEEPINFRA_URL=https://api.deepinfra.com/v1/openai/chat/completions
+DEEPINFRA_API_KEY=key_anda
+DEEPINFRA_MODEL=nama-model-yang-tersedia
+```
+
+Gemini memakai API native, sedangkan provider lain memakai format chat completions. Kuota gratis Gemini umumnya dihitung per project, bukan sekadar per API key; buat key cadangan dari project berbeda bila memang diperlukan.
+
+Untuk memeriksa semua kombinasi provider, model, dan key tanpa menampilkan isi key:
+
+```bash
+npm run cek-ai
+```
 
 ## Cara Mendapatkan ID Grup
 

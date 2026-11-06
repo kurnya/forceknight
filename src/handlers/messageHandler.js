@@ -141,9 +141,8 @@ async function handleMessage(sock, message) {
       return;
     }
 
-    if (isReplyingToBot(sock, message)) {
-      return;
-    }
+    // Reply ke pesan Fuuka tidak langsung dibuang lagi — dicek di bawah (lihat isAiChatReply)
+    const repliedToBot = isReplyingToBot(sock, message);
 
     const messageText = extractMessageText(message).trim();
 
@@ -174,15 +173,28 @@ async function handleMessage(sock, message) {
     };
 
     const isBotMentioned = mentionedJids.some(isBotJid);
+    const hasNonBotMention = mentionedJids.some((jid) => !isBotJid(jid));
 
-    const isReplyToBot = false;
-    const quotedText = "";
+    // ── Lanjutan chat AI via reply ──
+    // AI hanya membalas reply kalau SEMUA syarat terpenuhi:
+    // - pesan Fuuka yang di-reply adalah balasan chat AI (bukan help/menu/intro/stiker)
+    // - bukan command (prefix) dan tidak me-mention member lain
+    //   (reply + @member biasanya untuk menunjukkan pesan Fuuka ke orang lain)
+    // Pesan bot sendiri sudah dibuang oleh isOwnMessage, jadi Fuuka tidak membalas dirinya.
+    const quotedContext = getQuotedMessageContext(message);
+    const quotedAiChat = repliedToBot ? fuuka.getAiChatMessage(quotedContext?.stanzaId) : null;
+    const isReplyToBot = Boolean(quotedAiChat) && !hasPrefix && !isBotMentioned && !hasNonBotMention;
+    const quotedText = isReplyToBot ? quotedAiChat.text : "";
+
+    // Reply ke pesan Fuuka lain (help/menu/dll) tanpa command & tanpa mention Fuuka tetap diabaikan
+    if (repliedToBot && !isReplyToBot && !hasPrefix && !isBotMentioned) {
+      return;
+    }
 
     const isFuukaWithoutPrefix = fuuka.shouldTriggerWithoutPrefix(normalizedMessageText) || isBotMentioned;
     const isFuukaWithHashPrefix = plainCommandName === `#${fuuka.name}`;
 
     // ── Deteksi reply ke member (bukan Fuuka) + ketik "intro" ──
-    const quotedContext = getQuotedMessageContext(message);
     const quotedParticipant = quotedContext?.participant || null;
     const isReplyToMember = Boolean(
       quotedParticipant &&
@@ -199,7 +211,6 @@ async function handleMessage(sock, message) {
     // 2. "@member intro"         — ada kata "intro" di mana saja, ada mention non-bot
     // 3. "@member"               — hanya mention (tanpa kata apapun), ada mention non-bot
     // 4. Reply pesan member + ketik "intro" (posisi bebas)
-    const hasNonBotMention = mentionedJids.some((jid) => !isBotJid(jid));
     const isIntroTrigger = !hasPrefix && !isBotMentioned && (
       isIntroViaReply ||
       (hasNonBotMention && messageHasIntroKeyword)
@@ -211,6 +222,8 @@ async function handleMessage(sock, message) {
     const isHelpTopicCode = Boolean(help.topicReplies[helpTopicKey]);
     const commandText = hasPrefix
       ? messageText.slice(settings.prefix.length).trim()
+      : isReplyToBot
+        ? fuuka.name
       : isFuukaWithHashPrefix
         ? messageText.slice(1).trim()
         : isFuukaWithoutPrefix

@@ -14,6 +14,7 @@ const {
 } = require("@whiskeysockets/baileys");
 const P = require("pino");
 const qrcode = require("qrcode-terminal");
+const QRCode = require("qrcode");
 const sharp = require("sharp");
 
 const settings = require("./config/settings");
@@ -33,6 +34,8 @@ let reconnectTimer = null;
 let httpServerStarted = false;
 let activeSocket = null;
 let reconnectAttempts = 0;
+let latestQrPng = null;
+let latestQrVersion = 0;
 
 const MAX_RECONNECT_DELAY_MS = 60000;
 
@@ -73,6 +76,37 @@ function startHttpServer() {
   if (httpServerStarted) return;
 
   const server = http.createServer((req, res) => {
+    const requestUrl = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+
+    if (requestUrl.pathname === "/qr.png") {
+      if (!latestQrPng) {
+        res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
+        res.end("QR belum tersedia atau sesi sudah terhubung.");
+        return;
+      }
+
+      res.writeHead(200, {
+        "Content-Type": "image/png",
+        "Content-Length": latestQrPng.length,
+        "Cache-Control": "no-store, no-cache, must-revalidate"
+      });
+      res.end(latestQrPng);
+      return;
+    }
+
+    if (requestUrl.pathname === "/qr") {
+      if (!latestQrPng) {
+        res.writeHead(404, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+        res.end("<h2>QR belum tersedia</h2><p>Tunggu QR baru dibuat atau sesi WhatsApp sudah terhubung.</p>");
+        return;
+      }
+
+      const imageUrl = `/qr.png?v=${latestQrVersion}`;
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+      res.end(`<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="5"><title>WhatsApp QR</title></head><body style="font-family:sans-serif;text-align:center;background:#f5f5f5;padding:24px"><h2>Scan QR WhatsApp</h2><img src="${imageUrl}" alt="WhatsApp QR" style="width:min(90vw,480px);image-rendering:pixelated;background:#fff;padding:16px"><p>Halaman diperbarui otomatis.</p></body></html>`);
+      return;
+    }
+
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({
       status: "ok",
@@ -206,9 +240,23 @@ async function startBot() {
         console.log("[QR] Scan QR berikut dari WhatsApp:");
         // Jangan kirim data QR ke layanan pihak ketiga — data ini bisa dipakai untuk pairing akun.
         qrcode.generate(qr, { small: true });
+        QRCode.toBuffer(qr, {
+          type: "png",
+          width: 480,
+          margin: 2,
+          errorCorrectionLevel: "M"
+        }).then((png) => {
+          latestQrPng = png;
+          latestQrVersion += 1;
+          const browserUrl = process.env.QR_BROWSER_URL || `http://localhost:${settings.port}/qr`;
+          console.log(`[QR] Versi gambar: ${browserUrl}`);
+        }).catch((err) => {
+          console.error("[QR] Gagal membuat gambar QR:", err.message);
+        });
       }
 
       if (connection === "open") {
+        latestQrPng = null;
         isStarting = false;
         reconnectAttempts = 0;
         cancelReconnect();

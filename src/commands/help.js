@@ -1,9 +1,7 @@
 const path = require("path");
-const fs = require("fs");
 
 const divider = "━━━━━━━━━━━━━━━━━━━━";
 const sepuhAudioPath = path.resolve(__dirname, "../../audio/sepuh.ogg");
-const sepuhAudio = fs.readFileSync(sepuhAudioPath);
 const readMoreSpacer = String.fromCharCode(8206).repeat(4001);
 
 const luckPercentages = [0, 1, 2, 5, 10, 20, 25, 50, 99, 100];
@@ -2192,17 +2190,21 @@ module.exports = {
         },
       );
 
+      console.log(`[HELP #98] Mengirim audio sepuh dari ${sepuhAudioPath}`);
       await sock.sendMessage(
         message.key.remoteJid,
         {
-          audio: sepuhAudio,
+          // Kirim sebagai audio biasa berbasis path. PTT memicu perhitungan
+          // waveform tambahan yang dapat membuat proses berhenti pada server
+          // tanpa decoder audio opsional.
+          audio: { url: sepuhAudioPath },
           mimetype: "audio/ogg; codecs=opus",
-          ptt: true,
         },
         {
           quoted: message,
         },
       );
+      console.log("[HELP #98] Audio sepuh berhasil dikirim.");
 
       return;
     }
