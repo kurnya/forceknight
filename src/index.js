@@ -37,6 +37,15 @@ let reconnectAttempts = 0;
 let latestQrPng = null;
 let latestQrVersion = 0;
 
+function getQrBrowserUrl() {
+  const configuredUrl = process.env.QR_BROWSER_URL || process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL;
+  if (configuredUrl) {
+    const baseUrl = configuredUrl.replace(/\/+$/, "");
+    return baseUrl.endsWith("/qr") ? baseUrl : `${baseUrl}/qr`;
+  }
+  return `http://localhost:${settings.port}/qr`;
+}
+
 const MAX_RECONNECT_DELAY_MS = 60000;
 
 // Status codes yang TIDAK boleh reconnect
@@ -248,8 +257,7 @@ async function startBot() {
         }).then((png) => {
           latestQrPng = png;
           latestQrVersion += 1;
-          const browserUrl = process.env.QR_BROWSER_URL || `http://localhost:${settings.port}/qr`;
-          console.log(`[QR] Versi gambar: ${browserUrl}`);
+          console.log(`[QR] Versi gambar: ${getQrBrowserUrl()}`);
         }).catch((err) => {
           console.error("[QR] Gagal membuat gambar QR:", err.message);
         });

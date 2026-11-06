@@ -88,7 +88,7 @@ npm start
 
 Saat pertama kali jalan, terminal akan menampilkan QR code. Scan QR tersebut dari aplikasi WhatsApp yang akan dipakai untuk bot.
 
-Jika QR di terminal kurang jelas, buka URL yang dicetak dengan label `[QR] Versi gambar` (default: `http://localhost:3000/qr`). Halaman tersebut menampilkan QR PNG dan memperbaruinya otomatis. Jika bot berjalan di server, isi `QR_BROWSER_URL` dengan URL publik server, misalnya `https://domain-anda.example/qr`.
+Jika QR di terminal kurang jelas, buka URL yang dicetak dengan label `[QR] Versi gambar` (default lokal: `http://localhost:3000/qr`). Halaman tersebut menampilkan QR PNG dan memperbaruinya otomatis. Saat berjalan di Render, URL publik dari `RENDER_EXTERNAL_URL` dipakai otomatis. Untuk hosting lain, isi `QR_BROWSER_URL` atau `PUBLIC_URL`, misalnya `https://domain-anda.example`.
 
 QR adalah kredensial sementara untuk menghubungkan akun WhatsApp. Jangan membagikan URL tersebut kepada orang lain dan jangan mengekspos endpoint ini tanpa perlindungan jaringan yang sesuai.
 
