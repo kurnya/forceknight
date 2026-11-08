@@ -35,6 +35,12 @@ const AUTH_DIR = path.join(process.cwd(), "auth");
 const mysqlAuthConfig = readMysqlConfig(process.env);
 let mysqlAuthPool = null;
 
+console.log(
+  process.env.MASTER_DATA_URL
+    ? "[MASTER DATA] Aktif: isi #3 diambil dari Google Sheet"
+    : "[MASTER DATA] MASTER_DATA_URL kosong: #3 memakai teks statis di help.js"
+);
+
 async function loadAuthState() {
   if (!mysqlAuthConfig) return useMultiFileAuthState(AUTH_DIR);
   if (!mysqlAuthPool) mysqlAuthPool = createMysqlPool(mysqlAuthConfig);

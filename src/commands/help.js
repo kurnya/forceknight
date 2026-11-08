@@ -2108,9 +2108,11 @@ async function buildBuffTopicText({ getTab = masterData.getTab } = {}) {
   try {
     const buff = await getTab("buff");
     if (!Array.isArray(buff) || buff.length === 0) {
+      console.log("[HELP #3] Data Sheet tidak tersedia, memakai teks statis.");
       return topicReplies["#3"];
     }
     const buffland = await getTab("buffland");
+    console.log(`[HELP #3] Isi dari Sheet (${buff.length} baris buff).`);
     return buildBuffBody(buff, Array.isArray(buffland) ? buffland : []);
   } catch (error) {
     console.warn(`[HELP #3] Gagal membaca master data: ${error.message}`);
