@@ -3,3 +3,4 @@ node_modules
 auth
 youtube-cookies.json
 logs
+src/data/cache/

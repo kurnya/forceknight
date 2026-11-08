@@ -1,4 +1,6 @@
 const path = require("path");
+const masterData = require("../services/masterData");
+const { buildBuffBody } = require("../services/buffText");
 
 const divider = "━━━━━━━━━━━━━━━━━━━━";
 const sepuhAudioPath = path.resolve(__dirname, "../../audio/sepuh.ogg");
@@ -2100,6 +2102,22 @@ const topicReplies = {
   "#99": ["Tes Kehokian"].join("\n"),
 };
 
+// Isi #3 dari Google Sheet (tab buff + buffland). Bila data tidak ada atau kosong,
+// pakai string statis topicReplies["#3"] sebagai cadangan terakhir. Tidak pernah melempar.
+async function buildBuffTopicText({ getTab = masterData.getTab } = {}) {
+  try {
+    const buff = await getTab("buff");
+    if (!Array.isArray(buff) || buff.length === 0) {
+      return topicReplies["#3"];
+    }
+    const buffland = await getTab("buffland");
+    return buildBuffBody(buff, Array.isArray(buffland) ? buffland : []);
+  } catch (error) {
+    console.warn(`[HELP #3] Gagal membaca master data: ${error.message}`);
+    return topicReplies["#3"];
+  }
+}
+
 function normalizeTopicKey(value) {
   return (value || "").trim().toLowerCase();
 }
@@ -2109,9 +2127,13 @@ module.exports = {
   description: "Menampilkan bantuan penggunaan bot.",
   topicReplies,
   normalizeTopicKey,
-  execute: async ({ sock, message, args = [] }) => {
+  buildBuffTopicText,
+  execute: async ({ sock, message, args = [], deps }) => {
     const normalizedArg = normalizeTopicKey(args[0]);
-    const topicReply = topicReplies[normalizedArg];
+    const topicReply =
+      normalizedArg === "#3"
+        ? await buildBuffTopicText(deps)
+        : topicReplies[normalizedArg];
     const text =
       normalizedArg === "#99"
         ? normalizeSpacing(topicReply || "")

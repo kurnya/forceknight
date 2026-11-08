@@ -1,0 +1,291 @@
+[
+  {
+    "nama": "seed lengkap sama persis dengan #3 statis lama",
+    "buff": [
+      {
+        "urutan": 1,
+        "nama": "Max HP",
+        "kode": "1180755"
+      },
+      {
+        "urutan": 2,
+        "nama": "Max MP",
+        "kode": "9090903"
+      },
+      {
+        "urutan": 3,
+        "nama": "AMPR",
+        "kode": "1234561"
+      },
+      {
+        "urutan": 4,
+        "nama": "Critical Rate",
+        "kode": "1100000"
+      },
+      {
+        "urutan": 5,
+        "nama": "MATK",
+        "kode": "52255555"
+      },
+      {
+        "urutan": 6,
+        "nama": "ATK",
+        "kode": "5130123"
+      },
+      {
+        "urutan": 7,
+        "nama": "Weapon ATK",
+        "kode": "7123456"
+      },
+      {
+        "urutan": 8,
+        "nama": "STR",
+        "kode": "1110033"
+      },
+      {
+        "urutan": 9,
+        "nama": "INT",
+        "kode": "9090903"
+      },
+      {
+        "urutan": 10,
+        "nama": "VIT",
+        "kode": "5130123"
+      },
+      {
+        "urutan": 11,
+        "nama": "AGI",
+        "kode": "7162029"
+      },
+      {
+        "urutan": 12,
+        "nama": "DEX",
+        "kode": "9090904"
+      },
+      {
+        "urutan": 13,
+        "nama": "Physical Resist",
+        "kode": "9090907"
+      },
+      {
+        "urutan": 14,
+        "nama": "Magic Resist",
+        "kode": "2020505"
+      },
+      {
+        "urutan": 15,
+        "nama": "Kebal bumi",
+        "kode": "6150029"
+      },
+      {
+        "urutan": 16,
+        "nama": "Frac Barrier",
+        "kode": "6150029"
+      },
+      {
+        "urutan": 17,
+        "nama": "Aggro +%",
+        "kode": "2020606"
+      },
+      {
+        "urutan": 18,
+        "nama": "Aggro -%",
+        "kode": "1010147"
+      },
+      {
+        "urutan": 19,
+        "nama": "DTE Bumi",
+        "kode": "4111113"
+      },
+      {
+        "urutan": 20,
+        "nama": "DTE Bumi",
+        "kode": "2210103"
+      },
+      {
+        "urutan": 21,
+        "nama": "DTE Api",
+        "kode": "3210106"
+      },
+      {
+        "urutan": 22,
+        "nama": "DTE Api",
+        "kode": "2210106"
+      },
+      {
+        "urutan": 23,
+        "nama": "DTE Air",
+        "kode": "7150030"
+      },
+      {
+        "urutan": 24,
+        "nama": "DTE Air",
+        "kode": "2210100"
+      },
+      {
+        "urutan": 25,
+        "nama": "DTE Angin",
+        "kode": "8080804"
+      },
+      {
+        "urutan": 26,
+        "nama": "DTE Angin",
+        "kode": "7257777"
+      },
+      {
+        "urutan": 27,
+        "nama": "DTE Angin",
+        "kode": "3149696"
+      },
+      {
+        "urutan": 28,
+        "nama": "DTE Angin",
+        "kode": "2210101"
+      },
+      {
+        "urutan": 29,
+        "nama": "DTE Cahaya",
+        "kode": "6010289"
+      },
+      {
+        "urutan": 30,
+        "nama": "DTE Cahaya",
+        "kode": "2210105"
+      },
+      {
+        "urutan": 31,
+        "nama": "DTE Gelap",
+        "kode": "6116116"
+      },
+      {
+        "urutan": 32,
+        "nama": "DTE Gelap",
+        "kode": "5010092"
+      },
+      {
+        "urutan": 33,
+        "nama": "DTE Gelap",
+        "kode": "2210104"
+      },
+      {
+        "urutan": 34,
+        "nama": "DTE Netral",
+        "kode": "1234561"
+      },
+      {
+        "urutan": 35,
+        "nama": "DTE Netral",
+        "kode": "2210102"
+      }
+    ],
+    "buffland": [
+      {
+        "urutan": 1,
+        "label": "MP",
+        "nama": "punkz"
+      },
+      {
+        "urutan": 2,
+        "label": "AMPR",
+        "nama": "hsans, moung zy"
+      },
+      {
+        "urutan": 3,
+        "label": "WATK",
+        "nama": "Master-A"
+      },
+      {
+        "urutan": 4,
+        "label": "DTE earth",
+        "nama": "medzzo"
+      }
+    ],
+    "expected": "━━━━━━━━━━━━━━━━━━━━\nKode Buff Player Toram\n━━━━━━━━━━━━━━━━━━━━\n\n*List Buff*\n\nMax HP\n1180755\n\nMax MP\n9090903\n\nAMPR\n1234561\n\nCritical Rate\n1100000\n\nMATK\n52255555\n\nATK\n5130123\n\nWeapon ATK\n7123456\n\nSTR\n1110033\n\nINT\n9090903\n\nVIT\n5130123\n\nAGI\n7162029\n\nDEX\n9090904\n\nPhysical Resist\n9090907\n\nMagic Resist\n2020505\n\nKebal bumi\n6150029\n\nFrac Barrier\n6150029\n\nAggro +%\n2020606\n\nAggro -%\n1010147\n\nDTE Bumi\n4111113\n2210103\n\nDTE Api\n3210106\n2210106\n\nDTE Air\n7150030\n2210100\n\nDTE Angin\n8080804\n7257777\n3149696\n2210101\n\nDTE Cahaya\n6010289\n2210105\n\nDTE Gelap\n6116116\n5010092\n2210104\n\nDTE Netral\n1234561\n2210102\n\n*Code buffland member/admin*\n\nMP         : punkz\nAMPR       : hsans, moung zy\nWATK       : Master-A\nDTE earth  : medzzo\n\n━━━━━━━━━━━━━━━━━━━━"
+  },
+  {
+    "nama": "satu buff satu kode, tanpa buffland",
+    "buff": [
+      {
+        "urutan": 1,
+        "nama": "Max HP",
+        "kode": "1"
+      }
+    ],
+    "buffland": [],
+    "expected": "━━━━━━━━━━━━━━━━━━━━\nKode Buff Player Toram\n━━━━━━━━━━━━━━━━━━━━\n\n*List Buff*\n\nMax HP\n1\n\n━━━━━━━━━━━━━━━━━━━━"
+  },
+  {
+    "nama": "nama sama tidak berurutan jadi dua kelompok",
+    "buff": [
+      {
+        "urutan": 1,
+        "nama": "A",
+        "kode": "1"
+      },
+      {
+        "urutan": 2,
+        "nama": "B",
+        "kode": "2"
+      },
+      {
+        "urutan": 3,
+        "nama": "A",
+        "kode": "3"
+      }
+    ],
+    "buffland": [],
+    "expected": "━━━━━━━━━━━━━━━━━━━━\nKode Buff Player Toram\n━━━━━━━━━━━━━━━━━━━━\n\n*List Buff*\n\nA\n1\n\nB\n2\n\nA\n3\n\n━━━━━━━━━━━━━━━━━━━━"
+  },
+  {
+    "nama": "urutan menentukan susunan walau input acak",
+    "buff": [
+      {
+        "urutan": 2,
+        "nama": "B",
+        "kode": "2"
+      },
+      {
+        "urutan": 1,
+        "nama": "A",
+        "kode": "1"
+      }
+    ],
+    "buffland": [],
+    "expected": "━━━━━━━━━━━━━━━━━━━━\nKode Buff Player Toram\n━━━━━━━━━━━━━━━━━━━━\n\n*List Buff*\n\nA\n1\n\nB\n2\n\n━━━━━━━━━━━━━━━━━━━━"
+  },
+  {
+    "nama": "buffland ada, label rata kiri lebar 11",
+    "buff": [
+      {
+        "urutan": 1,
+        "nama": "STR",
+        "kode": "9"
+      }
+    ],
+    "buffland": [
+      {
+        "urutan": 1,
+        "label": "MP",
+        "nama": "punkz"
+      },
+      {
+        "urutan": 2,
+        "label": "DTE earth",
+        "nama": "medzzo"
+      }
+    ],
+    "expected": "━━━━━━━━━━━━━━━━━━━━\nKode Buff Player Toram\n━━━━━━━━━━━━━━━━━━━━\n\n*List Buff*\n\nSTR\n9\n\n*Code buffland member/admin*\n\nMP         : punkz\nDTE earth  : medzzo\n\n━━━━━━━━━━━━━━━━━━━━"
+  },
+  {
+    "nama": "buff kosong hanya judul dan buffland",
+    "buff": [],
+    "buffland": [
+      {
+        "urutan": 1,
+        "label": "MP",
+        "nama": "punkz"
+      }
+    ],
+    "expected": "━━━━━━━━━━━━━━━━━━━━\nKode Buff Player Toram\n━━━━━━━━━━━━━━━━━━━━\n\n*List Buff*\n\n*Code buffland member/admin*\n\nMP         : punkz\n\n━━━━━━━━━━━━━━━━━━━━"
+  }
+]

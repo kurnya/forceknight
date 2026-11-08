@@ -72,6 +72,16 @@ PREFIX=!
 ALLOWED_GROUPS=120363412345678901@g.us,120363499999999@g.us
 ```
 
+### Master Data (opsional)
+
+Isi topik `#3` (Kode Buff) bisa diambil dari Google Sheet "Master Data Fuuka" dan diubah lewat dashboard terpisah (`fuuka-dashboard`). Isi `MASTER_DATA_URL` di `.env` dengan URL Apps Script Web App (berakhiran `/exec`):
+
+```env
+MASTER_DATA_URL=https://script.google.com/macros/s/xxxx/exec
+```
+
+Bot menyimpan cache 5 menit, plus salinan terakhir di `src/data/cache/`. Jika Sheet tidak bisa dijangkau, bot memakai salinan itu; jika tidak ada juga, memakai teks statis di `src/commands/help.js`. Jika `MASTER_DATA_URL` kosong, bot memakai teks statis.
+
 ## Cara Menjalankan Lokal
 
 Mode development:
