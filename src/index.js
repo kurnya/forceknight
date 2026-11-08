@@ -18,6 +18,7 @@ const QRCode = require("qrcode");
 const sharp = require("sharp");
 
 const settings = require("./config/settings");
+const { readMysqlConfig, createMysqlPool, useMysqlAuthState } = require("./services/mysqlAuthState");
 const { handleMessage, setBotLid, resetBotLid, tryCaptureBotLid } = require("./handlers/messageHandler");
 const { configureMediaQueue, drainMediaQueue } = require("./utils/mediaQueue");
 
@@ -28,6 +29,17 @@ configureMediaQueue({
 });
 
 const AUTH_DIR = path.join(process.cwd(), "auth");
+
+// Sesi login di MySQL bila AUTH_MYSQL_HOST diisi (untuk hosting yang menghapus berkas saat deploy);
+// kosong = folder auth/ seperti biasa. Konfigurasi yang kurang langsung melempar galat saat boot.
+const mysqlAuthConfig = readMysqlConfig(process.env);
+let mysqlAuthPool = null;
+
+async function loadAuthState() {
+  if (!mysqlAuthConfig) return useMultiFileAuthState(AUTH_DIR);
+  if (!mysqlAuthPool) mysqlAuthPool = createMysqlPool(mysqlAuthConfig);
+  return useMysqlAuthState({ pool: mysqlAuthPool, sessionName: mysqlAuthConfig.session });
+}
 
 let isStarting = false;
 let reconnectTimer = null;
@@ -193,7 +205,8 @@ async function startBot() {
   resetBotLid();
 
   try {
-    const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+    const { state, saveCreds } = await loadAuthState();
+    console.log(`[AUTH] Sesi disimpan di ${mysqlAuthConfig ? `MySQL (${mysqlAuthConfig.database}, sesi "${mysqlAuthConfig.session}")` : "folder auth/"}`);
 
     // Pakai cache — tidak fetch ulang setiap reconnect
     const version = await getWAVersion();

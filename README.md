@@ -276,7 +276,26 @@ git push -u origin main
 Catatan:
 
 - Folder `auth/` berisi session login dan tidak disimpan ke git.
-- Jika deploy ulang di instance gratis, session bisa hilang sehingga QR perlu discan ulang.
+- Jika deploy ulang di instance gratis, session bisa hilang sehingga QR perlu discan ulang. Solusinya: simpan sesi di MySQL (lihat bagian berikut).
+
+## Sesi WhatsApp di MySQL (opsional)
+
+Bila hosting menghapus folder `auth/` saat deploy atau restart (mis. Hostinger Node.js), simpan sesi di database MySQL. Isi variabel berikut di `.env` atau di pengaturan environment hosting:
+
+```env
+AUTH_MYSQL_HOST=localhost
+AUTH_MYSQL_DATABASE=u123456789_nama
+AUTH_MYSQL_USER=u123456789_user
+AUTH_MYSQL_PASSWORD=isi-sendiri
+```
+
+- Mode MySQL aktif bila `AUTH_MYSQL_HOST` diisi. Kosong = folder `auth/` seperti biasa.
+- Tabel `wa_auth` dibuat otomatis saat bot pertama jalan. Bot tidak perlu akses selain ke database itu.
+- Scan QR **sekali** setelah mode ini aktif. Sesi lama di folder `auth/` tidak dipindahkan.
+- Jika database tidak terjangkau saat start, bot menulis `[START ERROR]` dan mencoba lagi bertahap. Bot **tidak** membuat sesi baru, jadi sesi lama aman.
+- Jika isi `creds.json` di tabel rusak, bot berhenti dengan pesan yang menyebut barisnya. Perbaiki atau hapus baris itu, lalu scan ulang.
+- Jangan jalankan dua bot dengan nomor yang sama dan `AUTH_MYSQL_SESSION` yang sama. Pakai nama sesi berbeda atau nomor berbeda.
+- Password database hanya di `.env` (di-gitignore) dan di environment hosting. Jangan di-commit.
 
 ## Deploy ke Koyeb
 
