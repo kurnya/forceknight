@@ -60,6 +60,14 @@ test("execute #12 dan #13: memakai tab master, kosong kembali ke statis", async 
   assert.equal(sent[1].includes("List Xtall Event"), true);
 });
 
+test("execute #4: memakai tab MQ, kosong kembali ke statis", async () => {
+  const sent = [];
+  const sock = { sendMessage: async (jid, content) => sent.push(content.text) };
+  await help.execute({ sock, message: { key: { remoteJid: "grup@g.us" } }, args: ["#4"], deps: { getTab: sheet({ mq: [{ isi: "Bahan MQ baru" }] }) } });
+  assert.match(sent[0], /Bahan MQ baru/);
+  assert.doesNotMatch(sent[0], /BAB 1/);
+});
+
 test("topicReplies['#3'] tetap string berisi judul (dicek messageHandler)", () => {
   assert.equal(typeof help.topicReplies["#3"], "string");
   assert.match(help.topicReplies["#3"], /Kode Buff Player Toram/);

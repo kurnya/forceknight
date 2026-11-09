@@ -2149,6 +2149,8 @@ module.exports = {
     const topicReply =
       normalizedArg === "#3"
         ? await buildBuffTopicText(deps)
+        : normalizedArg === "#4"
+          ? await buildMasterTopicText("mq", topicReplies["#4"], deps)
         : normalizedArg === "#12"
           ? await buildMasterTopicText("xtallMaster", topicReplies["#12"], deps)
           : normalizedArg === "#13"

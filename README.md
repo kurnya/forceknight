@@ -74,7 +74,7 @@ ALLOWED_GROUPS=120363412345678901@g.us,120363499999999@g.us
 
 ### Master Data (opsional)
 
-Isi topik `#3` (Kode Buff), `#12` (Xtall Master), dan `#13` (Xtall Event) bisa diambil dari Google Sheet "Master Data Fuuka" dan diubah lewat dashboard terpisah (`fuuka-dashboard`). Isi `MASTER_DATA_URL` di `.env` dengan URL Apps Script Web App (berakhiran `/exec`):
+Isi topik `#3` (Kode Buff), `#4` (Bahan MQ), `#12` (Xtall Master), dan `#13` (Xtall Event) bisa diambil dari Google Sheet "Master Data Fuuka" dan diubah lewat dashboard terpisah (`fuuka-dashboard`). Isi `MASTER_DATA_URL` di `.env` dengan URL Apps Script Web App (berakhiran `/exec`):
 
 ```env
 MASTER_DATA_URL=https://script.google.com/macros/s/xxxx/exec
