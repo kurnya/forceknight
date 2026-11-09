@@ -44,6 +44,22 @@ test("buildBuffTopicText: getTab melempar → string statis", async () => {
   assert.equal(text, help.topicReplies["#3"]);
 });
 
+test("buildMasterTopicText: data #12/#13 tersedia → baris dirangkai", async () => {
+  const text = await help.buildMasterTopicText("xtallMaster", "cadangan", {
+    getTab: sheet({ xtallMaster: [{ urutan: 1, isi: "Judul" }, { urutan: 2, isi: "" }, { urutan: 3, isi: "Isi" }] })
+  });
+  assert.equal(text, "Judul\n\nIsi");
+});
+
+test("execute #12 dan #13: memakai tab master, kosong kembali ke statis", async () => {
+  const sent = [];
+  const sock = { sendMessage: async (jid, content) => sent.push(content.text) };
+  await help.execute({ sock, message: { key: { remoteJid: "grup@g.us" } }, args: ["#12"], deps: { getTab: sheet({ xtallMaster: [{ isi: "Master baru" }] }) } });
+  await help.execute({ sock, message: { key: { remoteJid: "grup@g.us" } }, args: ["#13"], deps: { getTab: sheet({ xtallEvent: [] }) } });
+  assert.match(sent[0], /Master baru/);
+  assert.equal(sent[1].includes("List Xtall Event"), true);
+});
+
 test("topicReplies['#3'] tetap string berisi judul (dicek messageHandler)", () => {
   assert.equal(typeof help.topicReplies["#3"], "string");
   assert.match(help.topicReplies["#3"], /Kode Buff Player Toram/);

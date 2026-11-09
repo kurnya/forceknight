@@ -2120,6 +2120,19 @@ async function buildBuffTopicText({ getTab = masterData.getTab } = {}) {
   }
 }
 
+async function buildMasterTopicText(tab, fallback, { getTab = masterData.getTab } = {}) {
+  try {
+    const rows = await getTab(tab);
+    if (!Array.isArray(rows) || rows.length === 0) return fallback;
+    const lines = rows.map((row) => (row && row.isi !== undefined ? String(row.isi) : ""));
+    if (!lines.some((line) => line.trim() !== "")) return fallback;
+    return lines.join("\n");
+  } catch (error) {
+    console.warn(`[HELP ${tab}] Gagal membaca master data: ${error.message}`);
+    return fallback;
+  }
+}
+
 function normalizeTopicKey(value) {
   return (value || "").trim().toLowerCase();
 }
@@ -2130,11 +2143,16 @@ module.exports = {
   topicReplies,
   normalizeTopicKey,
   buildBuffTopicText,
+  buildMasterTopicText,
   execute: async ({ sock, message, args = [], deps }) => {
     const normalizedArg = normalizeTopicKey(args[0]);
     const topicReply =
       normalizedArg === "#3"
         ? await buildBuffTopicText(deps)
+        : normalizedArg === "#12"
+          ? await buildMasterTopicText("xtallMaster", topicReplies["#12"], deps)
+          : normalizedArg === "#13"
+            ? await buildMasterTopicText("xtallEvent", topicReplies["#13"], deps)
         : topicReplies[normalizedArg];
     const text =
       normalizedArg === "#99"

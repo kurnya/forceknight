@@ -37,8 +37,8 @@ let mysqlAuthPool = null;
 
 console.log(
   process.env.MASTER_DATA_URL
-    ? "[MASTER DATA] Aktif: isi #3 diambil dari Google Sheet"
-    : "[MASTER DATA] MASTER_DATA_URL kosong: #3 memakai teks statis di help.js"
+    ? "[MASTER DATA] Aktif: isi #3, #12, dan #13 diambil dari Google Sheet"
+    : "[MASTER DATA] MASTER_DATA_URL kosong: #3, #12, dan #13 memakai teks statis di help.js"
 );
 
 async function loadAuthState() {
