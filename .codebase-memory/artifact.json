@@ -1,11 +1,11 @@
 {
     "schema_version": 2,
-    "commit": "9e1c27f78e709cd80b198c2ee92e89248fe9b4b0",
-    "indexed_at": "2026-11-09T14:46:25Z",
+    "commit": "7b4ddf08863d6e71f6c1277736647961c8aecbb0",
+    "indexed_at": "2026-11-10T23:56:52Z",
     "project": "D-01Projek-DEV-ForceknightBot",
-    "nodes": 491,
-    "edges": 1062,
-    "original_size": 4587520,
-    "compressed_size": 707138,
+    "nodes": 506,
+    "edges": 1102,
+    "original_size": 4456448,
+    "compressed_size": 687462,
     "compression_level": 3
 }

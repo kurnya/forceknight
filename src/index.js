@@ -19,6 +19,7 @@ const sharp = require("sharp");
 
 const settings = require("./config/settings");
 const { readMysqlConfig, createMysqlPool, useMysqlAuthState } = require("./services/mysqlAuthState");
+const { startHeartbeat } = require("./utils/diagnostics");
 const { handleMessage, setBotLid, resetBotLid, tryCaptureBotLid } = require("./handlers/messageHandler");
 const { configureMediaQueue, drainMediaQueue } = require("./utils/mediaQueue");
 
@@ -34,6 +35,7 @@ const AUTH_DIR = path.join(process.cwd(), "auth");
 // kosong = folder auth/ seperti biasa. Konfigurasi yang kurang langsung melempar galat saat boot.
 const mysqlAuthConfig = readMysqlConfig(process.env);
 let mysqlAuthPool = null;
+let waConnection = "starting"; // untuk log [HEARTBEAT]
 
 console.log(
   process.env.MASTER_DATA_URL
@@ -263,6 +265,7 @@ async function startBot() {
     // ── Connection state ──
     sock.ev.on("connection.update", (update) => {
       const { connection, lastDisconnect, qr } = update;
+      if (connection) waConnection = connection;
 
       if (qr) {
         console.log("[QR] Scan QR berikut dari WhatsApp:");
@@ -407,6 +410,12 @@ async function gracefulShutdown(signal) {
   destroySocket(activeSocket);
   setTimeout(() => process.exit(0), 3000).unref?.();
 }
+
+// Jejak diagnostik: bila log berhenti tanpa [SHUTDOWN] atau [EXIT], proses dimatikan paksa dari luar
+// (mis. SIGKILL karena memori habis). [HEARTBEAT] terakhir menunjukkan memori saat itu.
+process.on("exit", (code) => console.log(`[EXIT] Proses berhenti, kode ${code}.`));
+startHeartbeat({ getStatus: () => waConnection });
+console.log("[HEARTBEAT]", `Node ${process.version}, pid ${process.pid}, setiap 5 menit.`);
 
 process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
