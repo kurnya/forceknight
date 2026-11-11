@@ -159,3 +159,28 @@ test("readMysqlConfig: port bukan angka → galat", () => {
 test("readMysqlConfig: nama sesi tidak valid (karakter aneh) → galat", () => {
   assert.throws(() => readMysqlConfig({ ...penuh, AUTH_MYSQL_SESSION: "a b;--" }), /AUTH_MYSQL_SESSION/);
 });
+
+// ---- observabilitas: galat DB harus kelihatan di log, bukan hilang di logger Baileys yang silent ----
+test("galat tulis dicatat ke logger beserta nama kunci dan pesan galat", async () => {
+  const pool = fakePool();
+  const logs = [];
+  const { state } = await useMysqlAuthState({ pool, sessionName: "s1", logger: { error: (...a) => logs.push(a.join(" ")) } });
+  pool.fail = true;
+  await assert.rejects(state.keys.set({ "pre-key": { 1: { v: 1 } } }), /MySQL/i);
+  assert.equal(logs.length, 1);
+  assert.match(logs[0], /\[AUTH MYSQL\]/);
+  assert.match(logs[0], /pre-key-1\.json/);
+  assert.match(logs[0], /ECONNREFUSED/);
+});
+
+test("galat baca dan hapus juga dicatat ke logger", async () => {
+  const pool = fakePool();
+  const logs = [];
+  const { state } = await useMysqlAuthState({ pool, sessionName: "s1", logger: { error: (...a) => logs.push(a.join(" ")) } });
+  pool.fail = true;
+  await assert.rejects(state.keys.get("pre-key", ["7"]), /MySQL/i);
+  await assert.rejects(state.keys.set({ "pre-key": { 7: null } }), /MySQL/i);
+  assert.equal(logs.length, 2);
+  assert.match(logs[0], /pre-key-7\.json/);
+  assert.match(logs[1], /pre-key-7\.json/);
+});

@@ -55,10 +55,14 @@ function createMysqlPool(config) {
   });
 }
 
-async function useMysqlAuthState({ pool, sessionName = "fuuka", baileys } = {}) {
+async function useMysqlAuthState({ pool, sessionName = "fuuka", baileys, logger = console } = {}) {
   const { BufferJSON, initAuthCreds, proto } = baileys || require("@whiskeysockets/baileys");
 
-  const dbError = (err) => new Error(`Gagal mengakses MySQL (${err.message})`);
+  // Logger Baileys disetel silent, jadi galat database dicatat di sini agar tidak hilang tanpa jejak.
+  const dbError = (err, op, key) => {
+    if (op) logger.error(`[AUTH MYSQL] gagal ${op} "${key}": ${err.message}`);
+    return new Error(`Gagal mengakses MySQL (${err.message})`);
+  };
 
   try {
     await pool.execute(CREATE_TABLE);
@@ -81,7 +85,7 @@ async function useMysqlAuthState({ pool, sessionName = "fuuka", baileys } = {}) 
     try {
       [rows] = await pool.execute(`SELECT value FROM ${TABLE} WHERE session_name = ? AND key_name = ?`, [sessionName, key]);
     } catch (err) {
-      throw dbError(err);
+      throw dbError(err, "membaca", key);
     }
     if (!rows || rows.length === 0) return null;
     try {
@@ -102,7 +106,7 @@ async function useMysqlAuthState({ pool, sessionName = "fuuka", baileys } = {}) 
           [sessionName, key, JSON.stringify(data, BufferJSON.replacer)]
         );
       } catch (err) {
-        throw dbError(err);
+        throw dbError(err, "menulis", key);
       }
     });
   }
@@ -112,7 +116,7 @@ async function useMysqlAuthState({ pool, sessionName = "fuuka", baileys } = {}) 
       try {
         await pool.execute(`DELETE FROM ${TABLE} WHERE session_name = ? AND key_name = ?`, [sessionName, key]);
       } catch (err) {
-        throw dbError(err);
+        throw dbError(err, "menghapus", key);
       }
     });
   }
